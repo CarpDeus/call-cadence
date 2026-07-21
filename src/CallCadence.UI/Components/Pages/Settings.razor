@@ -1,0 +1,693 @@
+@page "/settings"
+@page "/settings/{Section}"
+@rendermode InteractiveServer
+@using CallCadence.Models.Auth
+@using CallCadence.UI.Services
+@inject CallCadenceApiClient ApiClient
+@inject UserSessionState Session
+@inject NavigationManager NavigationManager
+
+<PageTitle>@PageTitleText</PageTitle>
+
+<MudPaper Class="pa-4 pa-md-6 mx-auto" Style="max-width: 1100px;">
+    <MudText Typo="Typo.h4" GutterBottom="true">Settings</MudText>
+
+    @if (!_isLoaded)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    }
+    else
+    {
+        @if (!string.IsNullOrWhiteSpace(_message))
+        {
+            <MudAlert Severity="@_messageSeverity" Class="mb-4">@_message</MudAlert>
+        }
+
+        @if (IsUsersSection)
+        {
+            <MudText Typo="Typo.h5" Class="mb-3">User Administration</MudText>
+
+            @if (_users.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Class="mb-4">No users found.</MudText>
+            }
+            else
+            {
+                <MudTable Items="_users" Hover="true" Dense="true" Class="mb-4">
+                    <HeaderContent>
+                        <MudTh>Email</MudTh>
+                        <MudTh>Admin</MudTh>
+                        <MudTh>Status</MudTh>
+                        <MudTh>Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Email">@context.Email</MudTd>
+                        <MudTd DataLabel="Admin">@FormatFlag(context.IsAdmin)</MudTd>
+                        <MudTd DataLabel="Status">@(context.IsDeactivated ? "Deactivated" : "Active")</MudTd>
+                        <MudTd DataLabel="Actions">
+                            <MudStack Row="true" Spacing="1">
+                                <MudIconButton Icon="Icons.Material.Filled.Edit"
+                                               Size="Size.Small"
+                                               title="Edit user"
+                                               Disabled="_isSaving || context.IsDeactivated"
+                                               OnClick="@(() => BeginEditUser(context))" />
+                                <MudIconButton Icon="Icons.Material.Filled.Password"
+                                               Size="Size.Small"
+                                               title="Set password"
+                                               Disabled="_isSaving || context.IsDeactivated"
+                                               OnClick="@(() => BeginPasswordReset(context))" />
+                                <MudIconButton Icon="Icons.Material.Filled.PersonOff"
+                                               Color="Color.Error"
+                                               Size="Size.Small"
+                                               title="Deactivate user"
+                                               Disabled="_isSaving || context.IsDeactivated"
+                                               OnClick="@(() => DeactivateAsync(context))" />
+                            </MudStack>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+
+            @if (!_showCreateUserForm)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="Icons.Material.Filled.PersonAdd" OnClick="BeginAddUser">
+                    Add User
+                </MudButton>
+            }
+
+            @if (_showCreateUserForm)
+            {
+                <MudDivider Class="my-4" />
+                <MudText Typo="Typo.h6" Class="mb-2">Add User</MudText>
+                <MudStack Spacing="2">
+                    <MudTextField Label="Email" @bind-Value="_createUserRequest.Email" />
+                    <MudTextField Label="Password"
+                                  @bind-Value="_createUserRequest.Password"
+                                  InputType="InputType.Password"
+                                  HelperText="12+ characters with upper, lower, digit, and symbol." />
+                    <MudTextField Label="Confirm Password"
+                                  @bind-Value="_createUserConfirmPassword"
+                                  InputType="InputType.Password"
+                                  HelperText="Re-enter the password to confirm." />
+                    <MudSwitch T="bool" Label="Grant admin access" @bind-Value="_createUserRequest.IsAdmin" Color="Color.Primary" />
+
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_isSaving" OnClick="CreateUserAsync">
+                            Create User
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" Disabled="_isSaving" OnClick="CancelCreateUser">
+                            Cancel
+                        </MudButton>
+                    </MudStack>
+                </MudStack>
+            }
+
+            @if (_editUser is not null)
+            {
+                <MudDivider Class="my-4" />
+                <MudText Typo="Typo.h6" Class="mb-2">Edit User: @_editUser.Email</MudText>
+                <MudStack Spacing="2">
+                    <MudTextField Label="Email" Value="@_editUser.Email" ReadOnly="true" Variant="Variant.Outlined" />
+                    <MudSwitch T="bool" Label="Is administrator" @bind-Value="_editUserRequest.IsAdmin" Color="Color.Primary" />
+
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_isSaving" OnClick="SaveEditUserAsync">
+                            Save Changes
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" Disabled="_isSaving" OnClick="CancelEditUser">
+                            Cancel
+                        </MudButton>
+                    </MudStack>
+                </MudStack>
+            }
+
+            @if (_passwordResetUser is not null)
+            {
+                <MudDivider Class="my-4" />
+                <MudText Typo="Typo.h6" Class="mb-2">Set Password for @_passwordResetUser.Email</MudText>
+                <MudStack Spacing="2">
+                    <MudTextField Label="New Password"
+                                  @bind-Value="_passwordResetRequest.Password"
+                                  InputType="InputType.Password"
+                                  HelperText="12+ characters with upper, lower, digit, and symbol." />
+                    <MudTextField Label="Confirm Password"
+                                  @bind-Value="_passwordResetConfirmPassword"
+                                  InputType="InputType.Password"
+                                  HelperText="Re-enter the password to confirm." />
+
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_isSaving" OnClick="SetPasswordAsync">
+                            Save Password
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" Disabled="_isSaving" OnClick="CancelPasswordReset">
+                            Cancel
+                        </MudButton>
+                    </MudStack>
+                </MudStack>
+            }
+        }
+        else if (IsSsoSection)
+        {
+            <MudText Typo="Typo.h5" Class="mb-1">Single Sign-On (SSO) Providers</MudText>
+            <MudText Typo="Typo.subtitle1" Class="mb-4">Manage configured SSO providers.</MudText>
+
+            @if (_isOverriddenByEnvironment)
+            {
+                <MudAlert Severity="Severity.Info" Class="mb-4">
+                    SSO configuration is managed via the <strong>CALLCADENCE_SSO_CONFIG</strong> environment variable.
+                    Changes are disabled.
+                </MudAlert>
+            }
+
+            @if (_providers.Count == 0 && !_showSsoForm)
+            {
+                <MudText Typo="Typo.body2" Class="mb-4">No SSO providers configured.</MudText>
+            }
+            else
+            {
+                <MudTable Items="_providers" Hover="true" Class="mb-4" Dense="true">
+                    <HeaderContent>
+                        <MudTh>Name</MudTh>
+                        <MudTh>Scheme</MudTh>
+                        <MudTh>Enabled</MudTh>
+                        <MudTh>Authority / Metadata</MudTh>
+                        <MudTh>Last Updated</MudTh>
+                        @if (!_isOverriddenByEnvironment)
+                        {
+                            <MudTh>Actions</MudTh>
+                        }
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Name</MudTd>
+                        <MudTd><code>@context.SchemeName</code></MudTd>
+                        <MudTd>@FormatFlag(context.IsEnabled)</MudTd>
+                        <MudTd>@(context.Authority ?? context.MetadataAddress ?? "—")</MudTd>
+                        <MudTd>@(context.UpdatedAt.HasValue ? context.UpdatedAt.Value.ToLocalTime().ToString("g") : "—")</MudTd>
+                        @if (!_isOverriddenByEnvironment)
+                        {
+                            <MudTd>
+                                <MudIconButton Icon="Icons.Material.Filled.Edit" Size="Size.Small" Disabled="_isSaving"
+                                               OnClick="@(() => BeginEditProvider(context))" />
+                                <MudIconButton Icon="Icons.Material.Filled.Delete" Size="Size.Small" Disabled="_isSaving"
+                                               Color="Color.Error"
+                                               OnClick="@(() => DeleteProviderAsync(context.SchemeName))" />
+                            </MudTd>
+                        }
+                    </RowTemplate>
+                </MudTable>
+            }
+
+            @if (!_isOverriddenByEnvironment && !_showSsoForm)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="Icons.Material.Filled.Add" OnClick="BeginAddProvider">
+                    Add Provider
+                </MudButton>
+            }
+
+            @if (_showSsoForm)
+            {
+                <MudDivider Class="my-4" />
+                <MudText Typo="Typo.h6" Class="mb-2">@(_isEditingProvider ? "Edit Provider" : "New Provider")</MudText>
+
+                <MudStack Spacing="2">
+                    <MudTextField Label="Provider Name" @bind-Value="_providerRequest.Name"
+                                  Placeholder="Azure AD"
+                                  Disabled="_isEditingProvider"
+                                  HelperText="@(_isEditingProvider ? "Provider name cannot be changed." : "Human-readable name, e.g. 'Azure AD'.")" />
+                    <MudSwitch T="bool" Label="Enable this provider" @bind-Value="_providerRequest.IsEnabled" Color="Color.Primary" />
+                    <MudTextField Label="Authority" @bind-Value="_providerRequest.Authority"
+                                  Placeholder="https://identity.example.com" />
+                    <MudTextField Label="Metadata Address" @bind-Value="_providerRequest.MetadataAddress"
+                                  Placeholder="https://identity.example.com/.well-known/openid-configuration" />
+                    <MudTextField Label="Client ID" @bind-Value="_providerRequest.ClientId" />
+                    <MudTextField Label="Client Secret" @bind-Value="_providerRequest.ClientSecret"
+                                  InputType="InputType.Password"
+                                  HelperText="@(_hasClientSecret ? "A secret is already stored. Leave blank to keep it." : "")" />
+                    <MudTextField Label="Callback Path" @bind-Value="_providerRequest.CallbackPath"
+                                  Placeholder="/signin-oidc-azure" />
+
+                    <MudStack Row="true" Spacing="2">
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                   Disabled="_isSaving" OnClick="SaveProviderAsync">
+                            @(_isEditingProvider ? "Update Provider" : "Add Provider")
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined" Disabled="_isSaving" OnClick="CancelProviderForm">Cancel</MudButton>
+                    </MudStack>
+                </MudStack>
+            }
+        }
+    }
+</MudPaper>
+
+@code {
+    private const string UsersSectionName = "users";
+    private const string SsoSectionName = "sso-configuration";
+
+    [Parameter]
+    public string? Section { get; set; }
+
+    private bool _isLoaded;
+    private bool _isSaving;
+    private bool _isOverriddenByEnvironment;
+    private bool _showCreateUserForm;
+    private bool _showSsoForm;
+    private bool _isEditingProvider;
+    private bool _hasClientSecret;
+    private string? _message;
+    private Severity _messageSeverity = Severity.Info;
+    private string _activeSection = UsersSectionName;
+    private List<UserSummaryResponse> _users = [];
+    private List<SsoConfigurationResponse> _providers = [];
+    private CreateUserRequest _createUserRequest = new();
+    private string _createUserConfirmPassword = string.Empty;
+    private SetUserPasswordRequest _passwordResetRequest = new();
+    private string _passwordResetConfirmPassword = string.Empty;
+    private UserSummaryResponse? _passwordResetUser;
+    private UserSummaryResponse? _editUser;
+    private UpdateUserRequest _editUserRequest = new();
+    private UpsertSsoConfigurationRequest _providerRequest = new();
+
+    private bool IsUsersSection => _activeSection == UsersSectionName;
+
+    private bool IsSsoSection => _activeSection == SsoSectionName;
+
+    private string PageTitleText => IsSsoSection ? "Settings - SSO Configuration" : "Settings - Users";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!RendererInfo.IsInteractive)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Section))
+        {
+            NavigationManager.NavigateTo($"/settings/{UsersSectionName}", replace: true);
+            return;
+        }
+
+        if (!TryNormalizeSection(Section, out var normalizedSection))
+        {
+            NavigationManager.NavigateTo("/not-found", replace: true);
+            return;
+        }
+
+        _activeSection = normalizedSection;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoaded = false;
+        _message = null;
+        _messageSeverity = Severity.Info;
+
+        try
+        {
+            var status = await ApiClient.GetAuthStatusAsync();
+            if (!status.CurrentUserIsAdmin)
+            {
+                NavigationManager.NavigateTo("/dashboard");
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(status.CurrentUserEmail))
+            {
+                Session.SignIn(status.CurrentUserEmail, true, Session.Token, Session.ExpiresAtUtc);
+            }
+
+            if (IsUsersSection)
+            {
+                _users = await ApiClient.GetUsersAsync();
+            }
+            else
+            {
+                var environmentStatusTask = ApiClient.GetSsoEnvironmentStatusAsync();
+                var providersTask = ApiClient.GetSsoConfigurationsAsync();
+
+                await Task.WhenAll(environmentStatusTask, providersTask);
+                _isOverriddenByEnvironment = (await environmentStatusTask).IsOverriddenByEnvironment;
+                _providers = await providersTask;
+            }
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            Session.SignOut();
+            NavigationManager.NavigateTo("/");
+            return;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            NavigationManager.NavigateTo("/dashboard");
+            return;
+        }
+        catch (Exception ex)
+        {
+            _message = ApiClient.GetErrorMessage(ex, "Unable to load settings.");
+            _messageSeverity = Severity.Error;
+        }
+        finally
+        {
+            _isLoaded = true;
+        }
+    }
+
+    private void CloseAllUserForms()
+    {
+        _showCreateUserForm = false;
+        _createUserRequest = new CreateUserRequest();
+        _createUserConfirmPassword = string.Empty;
+        _editUser = null;
+        _editUserRequest = new UpdateUserRequest();
+        _passwordResetUser = null;
+        _passwordResetRequest = new SetUserPasswordRequest();
+        _passwordResetConfirmPassword = string.Empty;
+    }
+
+    private void BeginAddUser()
+    {
+        CloseAllUserForms();
+        _showCreateUserForm = true;
+        _message = null;
+    }
+
+    private void CancelCreateUser()
+    {
+        CloseAllUserForms();
+    }
+
+    private async Task CreateUserAsync()
+    {
+        if (!ValidatePassword(_createUserRequest.Password))
+        {
+            SetMessage("Password must be 12+ characters with upper, lower, digit, and symbol.", Severity.Error);
+            return;
+        }
+
+        if (!PasswordsMatch(_createUserRequest.Password, _createUserConfirmPassword))
+        {
+            SetMessage("Passwords do not match.", Severity.Error);
+            return;
+        }
+
+        var email = _createUserRequest.Email;
+        await ExecuteSavingActionAsync(async () =>
+        {
+            await ApiClient.CreateUserAsync(_createUserRequest);
+            CloseAllUserForms();
+            SetMessage($"User '{email}' created.", Severity.Success);
+            await ReloadUsersAsync();
+        }, "Unable to create user.");
+    }
+
+    private void BeginEditUser(UserSummaryResponse user)
+    {
+        CloseAllUserForms();
+        _editUser = user;
+        _editUserRequest = new UpdateUserRequest { IsAdmin = user.IsAdmin };
+        _message = null;
+    }
+
+    private void CancelEditUser()
+    {
+        CloseAllUserForms();
+    }
+
+    private async Task SaveEditUserAsync()
+    {
+        if (_editUser is null)
+        {
+            return;
+        }
+
+        var userId = _editUser.Id;
+        var userEmail = _editUser.Email;
+        await ExecuteSavingActionAsync(async () =>
+        {
+            await ApiClient.UpdateUserAsync(userId, _editUserRequest);
+            CloseAllUserForms();
+            SetMessage($"User '{userEmail}' updated.", Severity.Success);
+            await ReloadUsersAsync();
+        }, $"Unable to update '{userEmail}'.");
+    }
+
+    private void BeginPasswordReset(UserSummaryResponse user)
+    {
+        CloseAllUserForms();
+        _passwordResetUser = user;
+        _message = null;
+    }
+
+    private void CancelPasswordReset()
+    {
+        CloseAllUserForms();
+    }
+
+    private async Task SetPasswordAsync()
+    {
+        if (_passwordResetUser is null)
+        {
+            return;
+        }
+
+        if (!ValidatePassword(_passwordResetRequest.Password))
+        {
+            SetMessage("Password must be 12+ characters with upper, lower, digit, and symbol.", Severity.Error);
+            return;
+        }
+
+        if (!PasswordsMatch(_passwordResetRequest.Password, _passwordResetConfirmPassword))
+        {
+            SetMessage("Passwords do not match.", Severity.Error);
+            return;
+        }
+
+        var userId = _passwordResetUser.Id;
+        var userEmail = _passwordResetUser.Email;
+        await ExecuteSavingActionAsync(async () =>
+        {
+            await ApiClient.SetUserPasswordAsync(userId, _passwordResetRequest);
+            CloseAllUserForms();
+            SetMessage($"Password updated for '{userEmail}'.", Severity.Success);
+        }, $"Unable to update password for '{userEmail}'.");
+    }
+
+    private async Task DeactivateAsync(UserSummaryResponse user)
+    {
+        await ExecuteSavingActionAsync(async () =>
+        {
+            await ApiClient.DeactivateUserAsync(user.Id);
+            SetMessage($"User '{user.Email}' deactivated.", Severity.Success);
+            await ReloadUsersAsync();
+        }, $"Unable to deactivate '{user.Email}'.");
+    }
+
+    private void BeginAddProvider()
+    {
+        _providerRequest = new UpsertSsoConfigurationRequest();
+        _hasClientSecret = false;
+        _isEditingProvider = false;
+        _showSsoForm = true;
+        _message = null;
+    }
+
+    private void BeginEditProvider(SsoConfigurationResponse provider)
+    {
+        _providerRequest = new UpsertSsoConfigurationRequest
+        {
+            Name = provider.Name,
+            IsEnabled = provider.IsEnabled,
+            Authority = provider.Authority,
+            MetadataAddress = provider.MetadataAddress,
+            ClientId = provider.ClientId,
+            CallbackPath = provider.CallbackPath
+        };
+        _hasClientSecret = provider.HasClientSecret;
+        _isEditingProvider = true;
+        _showSsoForm = true;
+        _message = null;
+    }
+
+    private void CancelProviderForm()
+    {
+        _showSsoForm = false;
+        _isEditingProvider = false;
+        _message = null;
+    }
+
+    private async Task SaveProviderAsync()
+    {
+        var validationError = ValidateProviderRequest();
+        if (validationError is not null)
+        {
+            SetMessage(validationError, Severity.Error);
+            return;
+        }
+
+        await ExecuteSavingActionAsync(async () =>
+        {
+            var payload = new UpsertSsoConfigurationRequest
+            {
+                Name = _providerRequest.Name,
+                IsEnabled = _providerRequest.IsEnabled,
+                Authority = _providerRequest.Authority,
+                MetadataAddress = _providerRequest.MetadataAddress,
+                ClientId = _providerRequest.ClientId,
+                ClientSecret = string.IsNullOrWhiteSpace(_providerRequest.ClientSecret) ? null : _providerRequest.ClientSecret,
+                CallbackPath = _providerRequest.CallbackPath
+            };
+
+            await ApiClient.UpsertSsoConfigurationAsync(payload);
+            _showSsoForm = false;
+            _isEditingProvider = false;
+            SetMessage($"Provider '{payload.Name}' saved. A service restart is required to activate changes.", Severity.Success);
+            await ReloadProvidersAsync();
+        }, "Unable to save SSO settings.");
+    }
+
+    private async Task DeleteProviderAsync(string schemeName)
+    {
+        await ExecuteSavingActionAsync(async () =>
+        {
+            await ApiClient.DeleteSsoConfigurationAsync(schemeName);
+            SetMessage($"Provider '{schemeName}' deleted. A service restart is required.", Severity.Success);
+            await ReloadProvidersAsync();
+        }, $"Unable to delete provider '{schemeName}'.");
+    }
+
+    private async Task ReloadUsersAsync()
+    {
+        _users = await ApiClient.GetUsersAsync();
+    }
+
+    private async Task ReloadProvidersAsync()
+    {
+        var environmentStatusTask = ApiClient.GetSsoEnvironmentStatusAsync();
+        var providersTask = ApiClient.GetSsoConfigurationsAsync();
+
+        await Task.WhenAll(environmentStatusTask, providersTask);
+        _isOverriddenByEnvironment = (await environmentStatusTask).IsOverriddenByEnvironment;
+        _providers = await providersTask;
+    }
+
+    private async Task ExecuteSavingActionAsync(Func<Task> action, string failureMessage)
+    {
+        _isSaving = true;
+        _message = null;
+
+        try
+        {
+            await action();
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            Session.SignOut();
+            NavigationManager.NavigateTo("/");
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            NavigationManager.NavigateTo("/dashboard");
+        }
+        catch (Exception ex)
+        {
+            SetMessage(ApiClient.GetErrorMessage(ex, failureMessage), Severity.Error);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void SetMessage(string message, Severity severity)
+    {
+        _message = message;
+        _messageSeverity = severity;
+    }
+
+    private static string FormatFlag(bool value) => value ? "Yes" : "No";
+
+    private static bool ValidatePassword(string password)
+    {
+        return !string.IsNullOrWhiteSpace(password)
+            && password.Length >= 12
+            && password.Any(char.IsUpper)
+            && password.Any(char.IsLower)
+            && password.Any(char.IsDigit)
+            && password.Any(ch => !char.IsLetterOrDigit(ch));
+    }
+
+    private static bool PasswordsMatch(string password, string confirmPassword)
+    {
+        return password == confirmPassword;
+    }
+
+    private static bool TryNormalizeSection(string? section, out string normalizedSection)
+    {
+        if (string.Equals(section, UsersSectionName, StringComparison.OrdinalIgnoreCase))
+        {
+            normalizedSection = UsersSectionName;
+            return true;
+        }
+
+        if (string.Equals(section, SsoSectionName, StringComparison.OrdinalIgnoreCase))
+        {
+            normalizedSection = SsoSectionName;
+            return true;
+        }
+
+        normalizedSection = string.Empty;
+        return false;
+    }
+
+    private string? ValidateProviderRequest()
+    {
+        if (string.IsNullOrWhiteSpace(_providerRequest.Name))
+        {
+            return "Provider name is required.";
+        }
+
+        if (!_providerRequest.IsEnabled)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(_providerRequest.Authority) && string.IsNullOrWhiteSpace(_providerRequest.MetadataAddress))
+        {
+            return "Provide either an Authority URL or Metadata Address when the provider is enabled.";
+        }
+
+        if (string.IsNullOrWhiteSpace(_providerRequest.ClientId))
+        {
+            return "Client ID is required when the provider is enabled.";
+        }
+
+        if (string.IsNullOrWhiteSpace(_providerRequest.ClientSecret) && !_hasClientSecret)
+        {
+            return "Client Secret is required when the provider is enabled.";
+        }
+
+        if (string.IsNullOrWhiteSpace(_providerRequest.CallbackPath))
+        {
+            return "Callback Path is required when the provider is enabled.";
+        }
+
+        if (!string.IsNullOrWhiteSpace(_providerRequest.Authority) &&
+            !Uri.TryCreate(_providerRequest.Authority, UriKind.Absolute, out _))
+        {
+            return "Authority must be a valid absolute URL.";
+        }
+
+        if (!string.IsNullOrWhiteSpace(_providerRequest.MetadataAddress) &&
+            !Uri.TryCreate(_providerRequest.MetadataAddress, UriKind.Absolute, out _))
+        {
+            return "Metadata Address must be a valid absolute URL.";
+        }
+
+        if (!string.IsNullOrWhiteSpace(_providerRequest.CallbackPath) && !_providerRequest.CallbackPath.StartsWith('/'))
+        {
+            return "Callback Path must start with '/'.";
+        }
+
+        return null;
+    }
+}

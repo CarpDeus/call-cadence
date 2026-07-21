@@ -1,0 +1,215 @@
+@page "/api-editing"
+@rendermode InteractiveServer
+@using CallCadence.Application.ApiCall
+@using CallCadence.UI.Services
+@inject CallCadenceApiClient ApiClient
+@inject UserSessionState Session
+@inject NavigationManager NavigationManager
+
+<PageTitle>API Editing</PageTitle>
+
+@if (!string.IsNullOrWhiteSpace(_errorMessage))
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_errorMessage</MudAlert>
+}
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudSelect T="EnabledFilterOption"
+               Label="Filter"
+               Value="_enabledFilter"
+               ValueChanged="OnEnabledFilterChanged"
+               Style="min-width: 220px;">
+        <MudSelectItem Value="EnabledFilterOption.Enabled">Enabled</MudSelectItem>
+        <MudSelectItem Value="EnabledFilterOption.Disabled">Disabled</MudSelectItem>
+        <MudSelectItem Value="EnabledFilterOption.All">All</MudSelectItem>
+    </MudSelect>
+
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/api-editing/new">Add API</MudButton>
+</MudStack>
+
+<MudTable T="ApiCallListItemDto"
+          @ref="_table"
+          ServerData="LoadApiCallsAsync"
+          Hover="true"
+          Dense="true">
+    <HeaderContent>
+        <MudTh>
+            <MudTableSortLabel T="ApiCallListItemDto" SortLabel="title" InitialDirection="SortDirection.Ascending">Title</MudTableSortLabel>
+        </MudTh>
+        <MudTh>
+            <MudTableSortLabel T="ApiCallListItemDto" SortLabel="enabled">Enabled</MudTableSortLabel>
+        </MudTh>
+        <MudTh>
+            <MudTableSortLabel T="ApiCallListItemDto" SortLabel="hasSchedule">Schedule Defined</MudTableSortLabel>
+        </MudTh>
+        <MudTh>
+            <MudTableSortLabel T="ApiCallListItemDto" SortLabel="nextScheduledCall">Next Scheduled Call</MudTableSortLabel>
+        </MudTh>
+        <MudTh>
+            <MudTableSortLabel T="ApiCallListItemDto" SortLabel="lastSuccessAt">Last Success</MudTableSortLabel>
+        </MudTh>
+        <MudTh>
+            <MudTableSortLabel T="ApiCallListItemDto" SortLabel="lastErrorAt">Last Error</MudTableSortLabel>
+        </MudTh>
+        <MudTh>Edit</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Title">@context.Title</MudTd>
+        <MudTd DataLabel="Enabled">@FormatFlag(context.IsActive)</MudTd>
+        <MudTd DataLabel="Schedule Defined">@FormatFlag(context.HasSchedule)</MudTd>
+        <MudTd DataLabel="Next Scheduled Call">@FormatNextScheduledCall(context.NextScheduledCall)</MudTd>
+        <MudTd DataLabel="Last Success">@FormatSince(context.LastSuccessAt)</MudTd>
+        <MudTd DataLabel="Last Error">@FormatSince(context.LastErrorAt)</MudTd>
+        <MudTd DataLabel="Edit">
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Href="@($"/api-editing/{context.Id}")">Edit</MudButton>
+        </MudTd>
+    </RowTemplate>
+    <PagerContent>
+        <MudTablePager PageSizeOptions="new[] { 10, 25, 50 }" />
+    </PagerContent>
+</MudTable>
+
+@code {
+    private MudTable<ApiCallListItemDto>? _table;
+    private string? _errorMessage;
+    private EnabledFilterOption _enabledFilter = EnabledFilterOption.Enabled;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!RendererInfo.IsInteractive)
+        {
+            return;
+        }
+
+        if (!Session.IsAuthenticated)
+        {
+            try
+            {
+                var status = await ApiClient.GetAuthStatusAsync();
+                if (status.IsAuthenticated && !string.IsNullOrWhiteSpace(status.CurrentUserEmail))
+                {
+                    Session.SignIn(status.CurrentUserEmail, status.CurrentUserIsAdmin, Session.Token, Session.ExpiresAtUtc);
+                }
+                else
+                {
+                    NavigationManager.NavigateTo("/");
+                    return;
+                }
+            }
+            catch (Exception)
+            {
+                NavigationManager.NavigateTo("/");
+                return;
+            }
+        }
+    }
+
+    private async Task<TableData<ApiCallListItemDto>> LoadApiCallsAsync(TableState state, CancellationToken cancellationToken)
+    {
+        if (!Session.IsAuthenticated)
+        {
+            return new TableData<ApiCallListItemDto>
+            {
+                Items = Array.Empty<ApiCallListItemDto>(),
+                TotalItems = 0
+            };
+        }
+
+        try
+        {
+            var response = await ApiClient.GetApiCallListAsync(new ApiCallListRequest
+            {
+                PageNumber = state.Page + 1,
+                PageSize = state.PageSize,
+                SortBy = string.IsNullOrWhiteSpace(state.SortLabel) ? "title" : state.SortLabel,
+                SortDescending = state.SortDirection == SortDirection.Descending,
+                Enabled = _enabledFilter switch
+                {
+                    EnabledFilterOption.Enabled => true,
+                    EnabledFilterOption.Disabled => false,
+                    _ => null
+                }
+            }, cancellationToken);
+
+            _errorMessage = null;
+
+            return new TableData<ApiCallListItemDto>
+            {
+                Items = response.Items,
+                TotalItems = response.Paging.TotalItems
+            };
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode is System.Net.HttpStatusCode.Unauthorized
+            or System.Net.HttpStatusCode.Forbidden)
+        {
+            Session.SignOut();
+            NavigationManager.NavigateTo("/");
+            return new TableData<ApiCallListItemDto>
+            {
+                Items = Array.Empty<ApiCallListItemDto>(),
+                TotalItems = 0
+            };
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ApiClient.GetErrorMessage(ex, "Unable to load API definitions.");
+            return new TableData<ApiCallListItemDto>
+            {
+                Items = Array.Empty<ApiCallListItemDto>(),
+                TotalItems = 0
+            };
+        }
+    }
+
+    private async Task OnEnabledFilterChanged(EnabledFilterOption value)
+    {
+        _enabledFilter = value;
+        if (_table is not null)
+        {
+            _table.NavigateTo(0);
+            await _table.ReloadServerData();
+        }
+    }
+
+    private static string FormatFlag(bool value) => value ? "Yes" : "No";
+
+    private static string FormatNextScheduledCall(DateTime? timestamp)
+    {
+        return timestamp.HasValue
+            ? timestamp.Value.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
+            : "Not scheduled";
+    }
+
+    private static string FormatSince(DateTime? timestamp)
+    {
+        if (!timestamp.HasValue)
+        {
+            return "Never";
+        }
+
+        var elapsed = DateTime.UtcNow - timestamp.Value;
+        if (elapsed.TotalSeconds < 60)
+        {
+            return $"{Math.Max(0, (int)elapsed.TotalSeconds)}s ago";
+        }
+
+        if (elapsed.TotalMinutes < 60)
+        {
+            return $"{(int)elapsed.TotalMinutes}m ago";
+        }
+
+        if (elapsed.TotalHours < 24)
+        {
+            return $"{(int)elapsed.TotalHours}h ago";
+        }
+
+        return $"{(int)elapsed.TotalDays}d ago";
+    }
+
+    private enum EnabledFilterOption
+    {
+        Enabled,
+        Disabled,
+        All
+    }
+}

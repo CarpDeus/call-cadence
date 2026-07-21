@@ -1,0 +1,57 @@
+@page "/sso-callback"
+@rendermode InteractiveServer
+@using CallCadence.UI.Services
+@inject CallCadenceApiClient ApiClient
+@inject NavigationManager NavigationManager
+
+<PageTitle>Signing in…</PageTitle>
+
+<MudContainer Class="d-flex flex-column align-center justify-center" Style="min-height: 100vh;">
+    @if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">@_errorMessage</MudAlert>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/">Back to login</MudButton>
+    }
+    else
+    {
+        <MudText Typo="Typo.h6" Class="mb-4">Completing sign-in…</MudText>
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+    }
+</MudContainer>
+
+@code {
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!RendererInfo.IsInteractive)
+        {
+            return;
+        }
+
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+
+        if (!query.TryGetValue("code", out var code) || string.IsNullOrWhiteSpace(code))
+        {
+            _errorMessage = "Missing sign-in code.";
+            return;
+        }
+
+        try
+        {
+            var result = await ApiClient.ExchangeSsoCodeAsync(code!);
+            if (!result.Authenticated)
+            {
+                _errorMessage = result.ErrorMessage ?? "Unable to complete sign-in.";
+                return;
+            }
+
+            NavigationManager.NavigateTo("/dashboard");
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ApiClient.GetErrorMessage(ex, "Unable to complete sign-in.");
+        }
+    }
+}

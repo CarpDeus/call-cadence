@@ -1,0 +1,306 @@
+@page "/dashboard"
+@rendermode InteractiveServer
+@using CallCadence.Application.Dashboard
+@using CallCadence.UI.Services
+@using Microsoft.AspNetCore.SignalR.Client
+@implements IAsyncDisposable
+@inject CallCadenceApiClient ApiClient
+@inject UserSessionState Session
+@inject NavigationManager NavigationManager
+
+<PageTitle>Dashboard</PageTitle>
+
+@if (!string.IsNullOrWhiteSpace(_errorMessage))
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@_errorMessage</MudAlert>
+}
+
+@if (!string.IsNullOrWhiteSpace(_warningMessage))
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-4">@_warningMessage</MudAlert>
+}
+
+@if (!_isReady)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    @if (!Session.IsAuthenticated)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            Viewing the dashboard in read-only mode.
+            <MudLink Href="/" Class="ml-2">Login</MudLink>
+        </MudAlert>
+    }
+
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="3">
+                <MudText Typo="Typo.h6">Successful Calls</MudText>
+                <MudText Typo="Typo.h3">@_successfulCalls.ToString("N0")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="3">
+                <MudText Typo="Typo.h6">Error Count</MudText>
+                <MudText Typo="Typo.h3">@_errorCount.ToString("N0")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="3">
+                <MudText Typo="Typo.h6">Server Started (UTC)</MudText>
+                <MudText Typo="Typo.body1">@_serverStartedAt.ToString("u")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="3">
+                <MudText Typo="Typo.h6" Class="mb-2">Current Activity</MudText>
+                @if (_currentActivities.Count == 0)
+                {
+                    <MudText>No active calls.</MudText>
+                }
+                else
+                {
+                    <MudTable Items="_currentActivities" Dense="true" Hover="true">
+                        <HeaderContent>
+                            <MudTh>Title</MudTh>
+                            <MudTh>Started (UTC)</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Title">@context.Title</MudTd>
+                            <MudTd DataLabel="Started">@context.StartedAt.ToString("u")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="3">
+                <MudText Typo="Typo.h6" Class="mb-2">Recent Successful Calls</MudText>
+                @if (_recentSuccessfulCalls.Count == 0)
+                {
+                    <MudText>No recent successful calls.</MudText>
+                }
+                else
+                {
+                    <MudTable Items="_recentSuccessfulCalls" Dense="true" Hover="true">
+                        <HeaderContent>
+                            <MudTh>Title</MudTh>
+                            <MudTh>Completed (UTC)</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Title">@context.Title</MudTd>
+                            <MudTd DataLabel="Completed">@context.CompletedAt.ToString("u")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="3">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+                    <MudText Typo="Typo.h6">Errors</MudText>
+                    @if (Session.IsAuthenticated)
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Warning" Disabled="_selectedErrorIds.Count == 0" OnClick="ClearSelectedErrorsAsync">
+                            Clear Checked
+                        </MudButton>
+                    }
+                </MudStack>
+
+                @if (_errors.Count == 0)
+                {
+                    <MudText>No errors.</MudText>
+                }
+                else
+                {
+                    <MudTable Items="_errors" Dense="true" Hover="true">
+                        <HeaderContent>
+                            @if (Session.IsAuthenticated)
+                            {
+                                <MudTh>Clear</MudTh>
+                            }
+                            <MudTh>Title</MudTh>
+                            <MudTh>Error</MudTh>
+                            <MudTh>Time (UTC)</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            @if (Session.IsAuthenticated)
+                            {
+                                <MudTd DataLabel="Clear">
+                                    <MudCheckBox T="bool" Value="@_selectedErrorIds.Contains(context.Id)" ValueChanged="checkedValue => ToggleErrorSelection(context.Id, checkedValue)" />
+                                </MudTd>
+                            }
+                            <MudTd DataLabel="Title">@context.Title</MudTd>
+                            <MudTd DataLabel="Error">@context.ErrorMessage</MudTd>
+                            <MudTd DataLabel="Occurred">@context.OccurredAt.ToString("u")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private readonly List<ActiveApiCallDto> _currentActivities = [];
+    private readonly List<RecentSuccessfulCallDto> _recentSuccessfulCalls = [];
+    private readonly List<DashboardErrorDto> _errors = [];
+    private readonly HashSet<Guid> _selectedErrorIds = [];
+    private HubConnection? _hubConnection;
+    private string? _errorMessage;
+    private string? _warningMessage;
+    private long _successfulCalls;
+    private long _errorCount;
+    private DateTime _serverStartedAt;
+    private bool _isReady;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!RendererInfo.IsInteractive)
+        {
+            return;
+        }
+
+        if (!Session.IsAuthenticated)
+        {
+            try
+            {
+                await ApiClient.RehydrateSessionAsync();
+            }
+            catch (Exception)
+            {
+                // If rehydration fails, continue as unauthenticated (read-only)
+            }
+        }
+
+        _errorMessage = null;
+        _warningMessage = null;
+
+        try
+        {
+            var state = await ApiClient.GetDashboardStateAsync();
+            _currentActivities.Clear();
+            _currentActivities.AddRange(state.CurrentActivities.OrderBy(x => x.StartedAt));
+            _successfulCalls = state.SuccessfulCalls;
+            _errorCount = state.ErrorCount;
+            _serverStartedAt = state.ServerStartedAt;
+
+            _recentSuccessfulCalls.Clear();
+            _recentSuccessfulCalls.AddRange(state.RecentSuccessfulCalls);
+
+            _errors.Clear();
+            _errors.AddRange(state.Errors.OrderByDescending(x => x.OccurredAt));
+
+            await ConnectHubAsync();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ApiClient.GetErrorMessage(ex, "Unable to load the dashboard.");
+        }
+
+        _isReady = true;
+    }
+
+    private async Task ConnectHubAsync()
+    {
+        _hubConnection = ApiClient.CreateHubConnection("hubs/generic");
+
+        _hubConnection.On<ActiveApiCallDto>("ApiCallStarted", call =>
+        {
+            _currentActivities.RemoveAll(x => x.ApiCallId == call.ApiCallId);
+            _currentActivities.Add(call);
+            _currentActivities.Sort((left, right) => left.StartedAt.CompareTo(right.StartedAt));
+            _ = InvokeAsync(StateHasChanged);
+        });
+
+        _hubConnection.On<DashboardCallCompletedDto>("ApiCallCompleted", completed =>
+        {
+            _currentActivities.RemoveAll(x => x.ApiCallId == completed.ApiCallId);
+
+            if (completed.Success)
+            {
+                _successfulCalls++;
+
+                _recentSuccessfulCalls.Insert(0, new RecentSuccessfulCallDto
+                {
+                    ApiCallId = completed.ApiCallId,
+                    Title = completed.Title,
+                    CompletedAt = completed.CompletedAt
+                });
+
+                if (_recentSuccessfulCalls.Count > 5)
+                {
+                    _recentSuccessfulCalls.RemoveAt(_recentSuccessfulCalls.Count - 1);
+                }
+            }
+            else if (completed.Error != null)
+            {
+                _errorCount++;
+                _errors.Insert(0, completed.Error);
+            }
+
+            _ = InvokeAsync(StateHasChanged);
+        });
+
+        try
+        {
+            await _hubConnection.StartAsync();
+            _warningMessage = null;
+        }
+        catch (Exception ex)
+        {
+            _warningMessage = ApiClient.GetErrorMessage(ex, "Dashboard updates are temporarily unavailable.");
+        }
+    }
+
+    private void ToggleErrorSelection(Guid errorId, bool isSelected)
+    {
+        if (isSelected)
+        {
+            _selectedErrorIds.Add(errorId);
+        }
+        else
+        {
+            _selectedErrorIds.Remove(errorId);
+        }
+    }
+
+    private async Task ClearSelectedErrorsAsync()
+    {
+        var selected = _selectedErrorIds.ToList();
+        if (selected.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await ApiClient.ClearDashboardErrorsAsync(selected);
+            _errors.RemoveAll(x => _selectedErrorIds.Contains(x.Id));
+            _selectedErrorIds.Clear();
+            _errorMessage = null;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode is System.Net.HttpStatusCode.Unauthorized
+            or System.Net.HttpStatusCode.Forbidden)
+        {
+            Session.SignOut();
+            NavigationManager.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ApiClient.GetErrorMessage(ex, "Unable to clear dashboard errors.");
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection != null)
+        {
+            await _hubConnection.DisposeAsync();
+        }
+    }
+}

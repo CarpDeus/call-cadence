@@ -1,0 +1,1019 @@
+@page "/api-editing/new"
+@page "/api-editing/{ApiCallId:guid}"
+@rendermode InteractiveServer
+@using System.Text.Json
+@using CallCadence.Application.ApiCall
+@using CallCadence.Domain.ApiCall
+@using CallCadence.Domain.Paging
+@using Cronos
+@using CallCadence.UI.Services
+@inject CallCadenceApiClient ApiClient
+@inject UserSessionState Session
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject ILogger<ApiEditor> Logger
+
+<PageTitle>@(_isEditMode ? "Edit API" : "Add API")</PageTitle>
+
+<MudPaper Class="pa-4" MaxWidth="MaxWidth.Medium">
+    <MudText Typo="Typo.h5" Class="mb-4">@(_isEditMode ? "Edit API" : "Add API")</MudText>
+
+    <MudTabs>
+        <MudTabPanel Text="Details">
+            <MudStack Spacing="2" Class="pt-2">
+                <MudTextField Label="Title" @bind-Value="_model.Title" Required="true" />
+                <MudTextField Label="Description" @bind-Value="_model.Description" />
+                <MudSelect T="string" Label="Method" @bind-Value="_model.HttpMethod">
+                    <MudSelectItem Value="@("GET")">GET</MudSelectItem>
+                    <MudSelectItem Value="@("POST")">POST</MudSelectItem>
+                    <MudSelectItem Value="@("PUT")">PUT</MudSelectItem>
+                    <MudSelectItem Value="@("PATCH")">PATCH</MudSelectItem>
+                    <MudSelectItem Value="@("DELETE")">DELETE</MudSelectItem>
+                </MudSelect>
+                <MudTextField Label="Endpoint URL" @bind-Value="_model.EndpointUrl" Required="true" />
+                <MudTextField Label="Payload" @bind-Value="_model.Payload" Lines="5" />
+
+                <MudDivider Class="my-2" />
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.h6">Headers</MudText>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Add" OnClick="AddHeader">Add Header</MudButton>
+                </MudStack>
+                @if (_model.Headers.Count > 0)
+                {
+                    @foreach (var (header, index) in _model.Headers.Select((h, i) => (h, i)))
+                    {
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudTextField Label="Name" Value="@header.Name" ValueChanged="@((string? v) => header.Name = v)" Class="flex-1" />
+                            <MudTextField Label="Value" Value="@header.Value" ValueChanged="@((string? v) => header.Value = v)" Class="flex-1" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => RemoveHeader(index))" />
+                        </MudStack>
+                    }
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">No headers defined.</MudText>
+                }
+
+                <MudDivider Class="my-2" />
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.h6">Parameters</MudText>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Add" OnClick="AddParameter">Add Parameter</MudButton>
+                </MudStack>
+                @if (_model.Parameters.Count > 0)
+                {
+                    @foreach (var (parameter, index) in _model.Parameters.Select((p, i) => (p, i)))
+                    {
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudTextField Label="Name" Value="@parameter.Name" ValueChanged="@((string? v) => parameter.Name = v)" Class="flex-1" />
+                            <MudTextField Label="Value" Value="@parameter.Value" ValueChanged="@((string? v) => parameter.Value = v)" Class="flex-1" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => RemoveParameter(index))" />
+                        </MudStack>
+                    }
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">No parameters defined.</MudText>
+                }
+
+                <MudDivider Class="my-2" />
+                <MudCheckBox T="bool" Label="Active" @bind-Value="_model.IsActive" />
+
+                <MudDivider Class="my-2" />
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.h6">Schedules</MudText>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Add" OnClick="AddSchedule">Add Schedule</MudButton>
+                </MudStack>
+
+                @if (_schedules.Count > 0)
+                {
+                    @foreach (var (schedule, index) in _schedules.Select((item, itemIndex) => (item, itemIndex)))
+                    {
+                        <MudPaper Outlined="true" Class="pa-3">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2">
+                                <MudText Typo="Typo.subtitle1">Schedule @(index + 1)</MudText>
+                                @if (_schedules.Count > 0)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small" OnClick="@(() => RemoveSchedule(index))" />
+                                }
+                            </MudStack>
+
+                            <MudStack Spacing="2">
+                                <MudCheckBox T="bool"
+                                             Label="Enabled"
+                                             Value="@schedule.IsEnabled"
+                                             ValueChanged="@((bool value) => OnScheduleEnabledChanged(schedule, value))" />
+
+                                <MudTextField T="string"
+                                              Label="CRON expression"
+                                              Value="@schedule.CronExpression"
+                                              ValueChanged="@((string? value) => OnScheduleCronExpressionChanged(schedule, value ?? string.Empty))"
+                                              HelperText="Format: minute hour day-of-month month day-of-week (UTC)"
+                                              Required="true" />
+
+                                @if (schedule.PreviewError is not null)
+                                {
+                                    <MudAlert Severity="Severity.Warning">@schedule.PreviewError</MudAlert>
+                                }
+                                else if (schedule.NextOccurrences.Count > 0)
+                                {
+                                    <MudPaper Outlined="true" Class="pa-2">
+                                        <MudText Typo="Typo.subtitle2">Next runs (UTC)</MudText>
+                                        @foreach (var occurrence in schedule.NextOccurrences)
+                                        {
+                                            <MudText Typo="Typo.body2">@occurrence</MudText>
+                                        }
+                                    </MudPaper>
+                                }
+                            </MudStack>
+                        </MudPaper>
+                    }
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">No schedules defined.</MudText>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(_errorMessage))
+                {
+                    <MudAlert Severity="Severity.Error">@_errorMessage</MudAlert>
+                }
+
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync">Save</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Info" Disabled="_isTesting" OnClick="TestApiCallAsync">Test</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Href="/api-editing">Cancel</MudButton>
+                </MudStack>
+
+                @if (_testResult is not null || _isTesting)
+                {
+                    <MudPaper Outlined="true" Class="pa-4 mt-2">
+                        @if (_isTesting)
+                        {
+                            <MudProgressLinear Indeterminate="true" Color="Color.Info" Class="mb-2" />
+                            <MudText Typo="Typo.body2">Executing test call…</MudText>
+                        }
+                        else if (_testResult is not null)
+                        {
+                            <MudStack Spacing="1">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                    <MudText Typo="Typo.h6">Test Result</MudText>
+                                    <MudChip T="string" Color="@(_testResult.Success ? Color.Success : Color.Error)" Size="Size.Small">
+                                        @(_testResult.Success ? "Success" : "Failed")
+                                    </MudChip>
+                                </MudStack>
+                                <MudText Typo="Typo.body2"><strong>URL:</strong> @(_testResult.RequestUri ?? "—")</MudText>
+                                <MudText Typo="Typo.body2"><strong>Response Code:</strong> @_testResult.ResponseCode</MudText>
+                                <MudText Typo="Typo.body2"><strong>Duration:</strong> @_testResult.DurationMs ms</MudText>
+                                @if (!string.IsNullOrWhiteSpace(_testResult.ErrorMessage))
+                                {
+                                    <MudAlert Severity="Severity.Error" Dense="true">@_testResult.ErrorMessage</MudAlert>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(_testResult.ResponseBody))
+                                {
+                                    <MudText Typo="Typo.subtitle2" Class="mt-1">Response Body</MudText>
+                                    <MudText Typo="Typo.body2" Style="white-space: pre-wrap; overflow-wrap: break-word;">@_testResult.ResponseBody</MudText>
+                                }
+                            </MudStack>
+                        }
+                    </MudPaper>
+                }
+            </MudStack>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Call Logs" Disabled="@(!_isEditMode)">
+            <MudText Typo="Typo.body2" Class="pt-2 mud-text-secondary">
+                Click a call log row to inspect the full request and response details.
+            </MudText>
+            <MudTable T="ApiCallLogDto"
+                      @ref="_logsTable"
+                      ServerData="LoadLogsAsync"
+                      OnRowClick="OnLogRowClick"
+                      RowClassFunc="GetLogRowClass"
+                      Hover="true"
+                      Dense="true"
+                      Class="pt-2">
+                <HeaderContent>
+                    <MudTh>
+                        <MudTableSortLabel T="ApiCallLogDto" SortLabel="executedAt" InitialDirection="SortDirection.Descending">Executed At (UTC)</MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>Method</MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="ApiCallLogDto" SortLabel="responseCode">Response Code</MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="ApiCallLogDto" SortLabel="durationMs">Duration (ms)</MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="ApiCallLogDto" SortLabel="success">Success</MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>Error</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Executed At (UTC)">@FormatLogExecutedAt(context.ExecutedAt)</MudTd>
+                    <MudTd DataLabel="Method">@context.HttpMethod</MudTd>
+                    <MudTd DataLabel="Response Code">@context.ResponseCode</MudTd>
+                    <MudTd DataLabel="Duration (ms)">@context.DurationMs</MudTd>
+                    <MudTd DataLabel="Success">@FormatFlag(context.Success)</MudTd>
+                    <MudTd DataLabel="Error">@context.ErrorMessage</MudTd>
+                </RowTemplate>
+                <PagerContent>
+                    <MudTablePager PageSizeOptions="new[] { 10, 25, 50 }" />
+                </PagerContent>
+            </MudTable>
+
+            @if (_selectedLog is not null)
+            {
+                <MudPaper Outlined="true" Class="pa-4 mt-4">
+                    <MudStack Spacing="2">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.h6">Selected Call Details</MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                Use the copy button on any field to copy the value shown for that field.
+                            </MudText>
+                        </MudStack>
+
+                        @if (!string.IsNullOrWhiteSpace(_lastCopiedField))
+                        {
+                            <MudAlert Dense="true" Severity="Severity.Success" role="status" aria-live="polite">Successfully copied @_lastCopiedField to clipboard.</MudAlert>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(_copyErrorMessage))
+                        {
+                            <MudAlert Dense="true" Severity="Severity.Error" role="status" aria-live="polite">@_copyErrorMessage</MudAlert>
+                        }
+
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1">
+                            <MudCheckBox T="bool"
+                                         Label="Show selected call details JSON"
+                                         @bind-Value="_showSelectedLogJson" />
+                            <MudButton Variant="Variant.Outlined"
+                                       Color="Color.Primary"
+                                       Size="Size.Small"
+                                       StartIcon="@Icons.Material.Filled.ContentCopy"
+                                       OnClick='@(() => CopyDetailAsync("Selected call details JSON", _selectedLogJson))'>
+                                Copy details as JSON
+                            </MudButton>
+                        </MudStack>
+                        @if (_showSelectedLogJson)
+                        {
+                            <MudPaper Outlined="true" Class="pa-3 call-log-detail-card">
+                                <MudStack Spacing="1">
+                                    <MudText Typo="Typo.subtitle2">Selected Call Details JSON</MudText>
+                                    <MudText Typo="Typo.body2" Class="call-log-detail-value call-log-detail-json">@_selectedLogJson</MudText>
+                                </MudStack>
+                            </MudPaper>
+                        }
+
+                        <MudGrid Spacing="2">
+                            <MudItem xs="12" md="6">
+                                <MudPaper Outlined="true" Class="pa-3 call-log-detail-card">
+                                    <MudStack Spacing="1">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                            <MudText Typo="Typo.subtitle2">RequestUri</MudText>
+                                            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                                           Color="Color.Primary"
+                                                           Size="Size.Small"
+                                                           title="Copy RequestUri"
+                                                           aria-label="Copy RequestUri"
+                                                           OnClick="() => CopyDetailAsync(nameof(ApiCallLogDto.RequestUri), GetRequestUriValue(_selectedLog))" />
+                                        </MudStack>
+                                        <MudText Typo="Typo.body2" Class="call-log-detail-value">@FormatDetailValue(GetRequestUriValue(_selectedLog))</MudText>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+                            <MudItem xs="12" md="6">
+                                <MudPaper Outlined="true" Class="pa-3 call-log-detail-card">
+                                    <MudStack Spacing="1">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                            <MudText Typo="Typo.subtitle2">HttpMethod</MudText>
+                                            @if (HasNonEmptyValue(GetHttpMethodValue(_selectedLog)))
+                                            {
+                                                <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                                              Color="Color.Primary"
+                                                              Size="Size.Small"
+                                                              title="Copy HttpMethod"
+                                                              aria-label="Copy HttpMethod"
+                                                              OnClick="() => CopyDetailAsync(nameof(ApiCallLogDto.HttpMethod), GetHttpMethodValue(_selectedLog))" />
+                                            }
+                                        </MudStack>
+                                        <MudText Typo="Typo.body2" Class="call-log-detail-value">@GetHttpMethodValue(_selectedLog)</MudText>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+                            <MudItem xs="12" md="6">
+                                <MudPaper Outlined="true" Class="pa-3 call-log-detail-card">
+                                    <MudStack Spacing="1">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                            <MudText Typo="Typo.subtitle2">RequestHeaders</MudText>
+                                            @if (HasNonEmptyValue(GetRequestHeadersValue(_selectedLog)))
+                                            {
+                                                <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                                                  Color="Color.Primary"
+                                                                  Size="Size.Small"
+                                                                  title="Copy RequestHeaders"
+                                                                  aria-label="Copy RequestHeaders"
+                                                                  OnClick="() => CopyDetailAsync(nameof(ApiCallLogDto.RequestHeaders), GetRequestHeadersValue(_selectedLog))" />
+                                            }
+                                        </MudStack>
+                                        <MudText Typo="Typo.body2" Class="call-log-detail-value">@FormatDetailValue(GetRequestHeadersValue(_selectedLog), "No headers recorded.")</MudText>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+                            <MudItem xs="12" md="6">
+                                <MudPaper Outlined="true" Class="pa-3 call-log-detail-card">
+                                    <MudStack Spacing="1">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                            <MudText Typo="Typo.subtitle2">RequestParameters</MudText>
+                                            @if (HasNonEmptyValue(GetRequestParametersValue(_selectedLog)))
+                                            {
+                                                <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                                               Color="Color.Primary"
+                                                               Size="Size.Small"
+                                                               title="Copy RequestParameters"
+                                                               aria-label="Copy RequestParameters"
+                                                               OnClick="() => CopyDetailAsync(nameof(ApiCallLogDto.RequestParameters), GetRequestParametersValue(_selectedLog))" />
+                                            }
+                                        </MudStack>
+                                        <MudText Typo="Typo.body2" Class="call-log-detail-value">@FormatDetailValue(GetRequestParametersValue(_selectedLog), "No parameters recorded.")</MudText>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+                            <MudItem xs="12" md="6">
+                                <MudPaper Outlined="true" Class="pa-3 call-log-detail-card">
+                                    <MudStack Spacing="1">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                            <MudText Typo="Typo.subtitle2">RequestBody</MudText>
+                                            @if (HasNonEmptyValue(GetRequestBodyValue(_selectedLog)))
+                                            {
+                                                <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                                               Color="Color.Primary"
+                                                               Size="Size.Small"
+                                                               title="Copy RequestBody"
+                                                               aria-label="Copy RequestBody"
+                                                               OnClick="() => CopyDetailAsync(nameof(ApiCallLogDto.RequestBody), GetRequestBodyValue(_selectedLog))" />
+                                            }
+                                        </MudStack>
+                                        <MudText Typo="Typo.body2" Class="call-log-detail-value">@FormatDetailValue(GetRequestBodyValue(_selectedLog))</MudText>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+                            <MudItem xs="12" md="6">
+                                <MudPaper Outlined="true" Class="pa-3 call-log-detail-card">
+                                    <MudStack Spacing="1">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                            <MudText Typo="Typo.subtitle2">ResponseCode</MudText>
+                                            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                                           Color="Color.Primary"
+                                                           Size="Size.Small"
+                                                           title="Copy ResponseCode"
+                                                           aria-label="Copy ResponseCode"
+                                                           OnClick="() => CopyDetailAsync(nameof(ApiCallLogDto.ResponseCode), GetResponseCodeValue(_selectedLog))" />
+                                        </MudStack>
+                                        <MudText Typo="Typo.body2" Class="call-log-detail-value">@GetResponseCodeValue(_selectedLog)</MudText>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+                            <MudItem xs="12" md="6">
+                                <MudPaper Outlined="true" Class="pa-3 call-log-detail-card">
+                                    <MudStack Spacing="1">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                            <MudText Typo="Typo.subtitle2">ExecutedAt</MudText>
+                                            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                                           Color="Color.Primary"
+                                                           Size="Size.Small"
+                                                           title="Copy ExecutedAt"
+                                                           aria-label="Copy ExecutedAt"
+                                                           OnClick="() => CopyDetailAsync(nameof(ApiCallLogDto.ExecutedAt), GetExecutedAtValue(_selectedLog))" />
+                                        </MudStack>
+                                        <MudText Typo="Typo.body2" Class="call-log-detail-value">@GetExecutedAtValue(_selectedLog)</MudText>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+                            <MudItem xs="12">
+                                <MudPaper Outlined="true" Class="pa-3 call-log-detail-card">
+                                    <MudStack Spacing="1">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                            <MudText Typo="Typo.subtitle2">ResponseBody</MudText>
+                                            @if (HasNonEmptyValue(GetResponseBodyValue(_selectedLog)))
+                                            {
+                                                <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                                               Color="Color.Primary"
+                                                               Size="Size.Small"
+                                                               title="Copy ResponseBody"
+                                                               aria-label="Copy ResponseBody"
+                                                               OnClick="() => CopyDetailAsync(nameof(ApiCallLogDto.ResponseBody), GetResponseBodyValue(_selectedLog))" />
+                                            }
+                                        </MudStack>
+                                        <MudText Typo="Typo.body2" Class="call-log-detail-value">@FormatDetailValue(GetResponseBodyValue(_selectedLog))</MudText>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+                            <MudItem xs="12" md="6">
+                                <MudPaper Outlined="true" Class="pa-3 call-log-detail-card">
+                                    <MudStack Spacing="1">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                            <MudText Typo="Typo.subtitle2">DurationMs</MudText>
+                                            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                                           Color="Color.Primary"
+                                                           Size="Size.Small"
+                                                           title="Copy DurationMs"
+                                                           aria-label="Copy DurationMs"
+                                                           OnClick="() => CopyDetailAsync(nameof(ApiCallLogDto.DurationMs), GetDurationMsValue(_selectedLog))" />
+                                        </MudStack>
+                                        <MudText Typo="Typo.body2" Class="call-log-detail-value">@GetDurationMsValue(_selectedLog)</MudText>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+                            <MudItem xs="12" md="6">
+                                <MudPaper Outlined="true" Class="pa-3 call-log-detail-card">
+                                    <MudStack Spacing="1">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                            <MudText Typo="Typo.subtitle2">Success</MudText>
+                                            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                                           Color="Color.Primary"
+                                                           Size="Size.Small"
+                                                           title="Copy Success"
+                                                           aria-label="Copy Success"
+                                                           OnClick="() => CopyDetailAsync(nameof(ApiCallLogDto.Success), GetSuccessValue(_selectedLog))" />
+                                        </MudStack>
+                                        <MudText Typo="Typo.body2" Class="call-log-detail-value">@GetSuccessValue(_selectedLog)</MudText>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+                            <MudItem xs="12">
+                                <MudPaper Outlined="true" Class="pa-3 call-log-detail-card">
+                                    <MudStack Spacing="1">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                            <MudText Typo="Typo.subtitle2">ErrorMessage</MudText>
+                                            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy"
+                                                           Color="Color.Primary"
+                                                           Size="Size.Small"
+                                                           title="Copy ErrorMessage"
+                                                           aria-label="Copy ErrorMessage"
+                                                           OnClick="() => CopyDetailAsync(nameof(ApiCallLogDto.ErrorMessage), GetErrorMessageValue(_selectedLog))" />
+                                        </MudStack>
+                                        <MudText Typo="Typo.body2" Class="call-log-detail-value">@FormatDetailValue(GetErrorMessageValue(_selectedLog))</MudText>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+                        </MudGrid>
+                    </MudStack>
+                </MudPaper>
+            }
+        </MudTabPanel>
+    </MudTabs>
+</MudPaper>
+
+@code {
+    [Parameter] public Guid? ApiCallId { get; set; }
+
+    private const int ClipboardOperationTimeoutSeconds = 5;
+    private const int CopyStatusDisplayDurationSeconds = 3;
+    private const string UnknownHttpMethod = "Unknown";
+    private static readonly JsonSerializerOptions DefaultJsonSerializerOptions = new()
+    {
+        WriteIndented = true
+    };
+
+    private bool _isEditMode;
+    private string? _errorMessage;
+    private ApiEditorModel _model = new();
+    private readonly List<ScheduleEditorModel> _schedules = [];
+    private readonly HashSet<Guid> _removedScheduleIds = [];
+    private MudTable<ApiCallLogDto>? _logsTable;
+    private ApiCallLogDto? _selectedLog;
+    private string? _lastCopiedField;
+    private string? _copyErrorMessage;
+    private long _copyStatusMessageVersion;
+    private bool _isTesting;
+    private TestApiCallResponse? _testResult;
+    private bool _showSelectedLogJson;
+    private string _selectedLogJson = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!RendererInfo.IsInteractive)
+        {
+            return;
+        }
+
+        if (!Session.IsAuthenticated)
+        {
+            try
+            {
+                var status = await ApiClient.GetAuthStatusAsync();
+                if (status.IsAuthenticated && !string.IsNullOrWhiteSpace(status.CurrentUserEmail))
+                {
+                    Session.SignIn(status.CurrentUserEmail, status.CurrentUserIsAdmin, Session.Token, Session.ExpiresAtUtc);
+                }
+                else
+                {
+                    NavigationManager.NavigateTo("/");
+                    return;
+                }
+            }
+            catch (Exception)
+            {
+                NavigationManager.NavigateTo("/");
+                return;
+            }
+        }
+
+        _isEditMode = ApiCallId.HasValue;
+
+        if (_isEditMode && ApiCallId.HasValue)
+        {
+            try
+            {
+                var apiCall = await ApiClient.GetApiCallAsync(ApiCallId.Value);
+                if (apiCall == null)
+                {
+                    _errorMessage = "API not found.";
+                    return;
+                }
+
+                _model = new ApiEditorModel
+                {
+                    Id = apiCall.Id,
+                    Title = apiCall.Title,
+                    Description = apiCall.Description,
+                    HttpMethod = apiCall.HttpMethod,
+                    EndpointUrl = apiCall.EndpointUrl,
+                    Payload = apiCall.Payload,
+                    IsActive = apiCall.IsActive,
+                    Headers = apiCall.Headers,
+                    Parameters = apiCall.Parameters
+                };
+
+                await LoadExistingScheduleAsync(apiCall.Id);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode is System.Net.HttpStatusCode.Unauthorized
+                or System.Net.HttpStatusCode.Forbidden)
+            {
+                Session.SignOut();
+                NavigationManager.NavigateTo("/");
+                return;
+            }
+            catch (Exception ex)
+            {
+                _errorMessage = ApiClient.GetErrorMessage(ex, "Unable to load the API definition.");
+            }
+        }
+
+        if (_schedules.Count == 0)
+        {
+            AddSchedule();
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _errorMessage = null;
+
+        foreach (var schedule in _schedules)
+        {
+            if (!TryValidateCron(schedule.CronExpression, out var validationError))
+            {
+                _errorMessage = validationError;
+                return;
+            }
+        }
+
+        try
+        {
+            var currentSchedules = _schedules.ToList();
+            var removedScheduleIds = _removedScheduleIds.Select(scheduleId => scheduleId.ToString()).ToList();
+
+            ApiCallDto savedApiCall;
+            if (_isEditMode)
+            {
+                savedApiCall = await ApiClient.UpdateApiCallAsync(new UpdateApiCallDto
+                {
+                    Id = _model.Id,
+                    Title = _model.Title,
+                    Description = _model.Description,
+                    HttpMethod = _model.HttpMethod,
+                    EndpointUrl = _model.EndpointUrl,
+                    Payload = _model.Payload,
+                    IsActive = _model.IsActive,
+                    Headers = _model.Headers,
+                    Parameters = _model.Parameters
+                });
+            }
+            else
+            {
+                savedApiCall = await ApiClient.CreateApiCallAsync(new CreateApiCallDto
+                {
+                    Title = _model.Title,
+                    Description = _model.Description,
+                    HttpMethod = _model.HttpMethod,
+                    EndpointUrl = _model.EndpointUrl,
+                    Payload = _model.Payload,
+                    IsActive = _model.IsActive,
+                    Headers = _model.Headers,
+                    Parameters = _model.Parameters
+                });
+            }
+
+            if (removedScheduleIds.Count > 0)
+            {
+                await ApiClient.RemoveSchedulesAsync(removedScheduleIds);
+            }
+
+            if (currentSchedules.Count > 0)
+            {
+                await ApiClient.ScheduleApiCallsAsync(currentSchedules.Select(schedule => new ScheduleRequest
+                {
+                    ScheduleId = schedule.ScheduleId,
+                    ApiCallId = savedApiCall.Id,
+                    CronExpression = schedule.CronExpression.Trim(),
+                    IsEnabled = schedule.IsEnabled
+                }));
+            }
+
+            NavigationManager.NavigateTo("/api-editing");
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode is System.Net.HttpStatusCode.Unauthorized
+            or System.Net.HttpStatusCode.Forbidden)
+        {
+            Session.SignOut();
+            NavigationManager.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ApiClient.GetErrorMessage(ex, ex.Message);
+        }
+    }
+
+    private async Task TestApiCallAsync()
+    {
+        _testResult = null;
+        _isTesting = true;
+        StateHasChanged();
+
+        try
+        {
+            _testResult = await ApiClient.TestApiCallAsync(new TestApiCallRequest
+            {
+                HttpMethod = _model.HttpMethod,
+                EndpointUrl = _model.EndpointUrl,
+                Payload = _model.Payload,
+                Headers = _model.Headers,
+                Parameters = _model.Parameters
+            });
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode is System.Net.HttpStatusCode.Unauthorized
+            or System.Net.HttpStatusCode.Forbidden)
+        {
+            Session.SignOut();
+            NavigationManager.NavigateTo("/");
+            return;
+        }
+        catch (Exception ex)
+        {
+            _testResult = new TestApiCallResponse
+            {
+                Success = false,
+                ErrorMessage = ApiClient.GetErrorMessage(ex, ex.Message)
+            };
+        }
+        finally
+        {
+            _isTesting = false;
+        }
+    }
+
+    private async Task<TableData<ApiCallLogDto>> LoadLogsAsync(TableState state, CancellationToken cancellationToken)
+    {
+        if (!_isEditMode || !ApiCallId.HasValue || !Session.IsAuthenticated)
+        {
+            return new TableData<ApiCallLogDto> { Items = [], TotalItems = 0 };
+        }
+
+        try
+        {
+            var response = await ApiClient.GetApiCallLogsPagedAsync(ApiCallId.Value, new ApiCallLogListRequest
+            {
+                PageNumber = state.Page + 1,
+                PageSize = state.PageSize,
+                SortBy = string.IsNullOrWhiteSpace(state.SortLabel) ? "executedAt" : state.SortLabel,
+                SortDescending = state.SortDirection != SortDirection.Ascending
+            }, cancellationToken);
+
+            return new TableData<ApiCallLogDto>
+            {
+                Items = response.Items,
+                TotalItems = response.Paging.TotalItems
+            };
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode is System.Net.HttpStatusCode.Unauthorized
+            or System.Net.HttpStatusCode.Forbidden)
+        {
+            Session.SignOut();
+            NavigationManager.NavigateTo("/");
+            return new TableData<ApiCallLogDto> { Items = [], TotalItems = 0 };
+        }
+        catch (Exception)
+        {
+            return new TableData<ApiCallLogDto> { Items = [], TotalItems = 0 };
+        }
+    }
+
+    private async Task LoadExistingScheduleAsync(Guid apiCallId)
+    {
+        var schedules = await ApiClient.GetSchedulesAsync();
+        var matchingSchedules = schedules
+            .Where(x => x.ApiCallId == apiCallId)
+            .OrderBy(x => x.ScheduleId)
+            .ToList();
+
+        if (matchingSchedules.Count == 0)
+        {
+            return;
+        }
+
+        _schedules.Clear();
+        foreach (var schedule in matchingSchedules)
+        {
+            _schedules.Add(new ScheduleEditorModel
+            {
+                ScheduleId = schedule.ScheduleId,
+                CronExpression = schedule.CronExpression,
+                IsEnabled = schedule.IsEnabled
+            });
+        }
+
+        UpdateAllSchedulePreviews();
+    }
+
+    private void OnLogRowClick(TableRowClickEventArgs<ApiCallLogDto> args)
+    {
+        if (args.Item is null)
+        {
+            return;
+        }
+
+        _selectedLog = _selectedLog?.Id == args.Item.Id ? null : args.Item;
+        _selectedLogJson = _selectedLog is null
+            ? string.Empty
+            : JsonSerializer.Serialize(_selectedLog, DefaultJsonSerializerOptions);
+        _showSelectedLogJson = false;
+        ClearCopyStatus();
+    }
+
+    private string GetLogRowClass(ApiCallLogDto item, int rowIndex)
+    {
+        _ = rowIndex;
+        return _selectedLog?.Id == item.Id ? "call-log-row-selected" : string.Empty;
+    }
+
+    private async Task CopyDetailAsync(string fieldName, string? value)
+    {
+        try
+        {
+            using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(ClipboardOperationTimeoutSeconds));
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", cancellationTokenSource.Token, value ?? string.Empty);
+            ShowCopySuccess(fieldName);
+        }
+        catch (OperationCanceledException ex)
+        {
+            Logger.LogWarning(ex, "Timed out copying API call log field {FieldName}", fieldName);
+            ShowCopyError($"Timed out copying {fieldName}.");
+        }
+        catch (JSDisconnectedException ex)
+        {
+            Logger.LogWarning(ex, "JavaScript disconnected while copying API call log field {FieldName}", fieldName);
+            ShowCopyError($"Unable to copy {fieldName}.");
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.LogWarning(ex, "Clipboard interop was unavailable for API call log field {FieldName}", fieldName);
+            ShowCopyError($"Unable to copy {fieldName}.");
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Unable to copy API call log field {FieldName}", fieldName);
+            ShowCopyError($"Unable to copy {fieldName}.");
+        }
+    }
+
+    private void AddSchedule()
+    {
+        _schedules.Add(new ScheduleEditorModel());
+        UpdateSchedulePreview(_schedules[^1]);
+    }
+
+    private void RemoveSchedule(int index)
+    {
+        var schedule = _schedules[index];
+        if (schedule.ScheduleId.HasValue)
+        {
+            _removedScheduleIds.Add(schedule.ScheduleId.Value);
+        }
+
+        _schedules.RemoveAt(index);
+    }
+
+    private void OnScheduleEnabledChanged(ScheduleEditorModel schedule, bool value)
+    {
+        schedule.IsEnabled = value;
+        UpdateSchedulePreview(schedule);
+    }
+
+    private void OnScheduleCronExpressionChanged(ScheduleEditorModel schedule, string value)
+    {
+        schedule.CronExpression = value;
+        UpdateSchedulePreview(schedule);
+    }
+
+    private void UpdateAllSchedulePreviews()
+    {
+        foreach (var schedule in _schedules)
+        {
+            UpdateSchedulePreview(schedule);
+        }
+    }
+
+    private void UpdateSchedulePreview(ScheduleEditorModel schedule)
+    {
+        schedule.NextOccurrences.Clear();
+        schedule.PreviewError = null;
+
+        if (!TryValidateCron(schedule.CronExpression, out var error))
+        {
+            schedule.PreviewError = error;
+            return;
+        }
+
+        var expression = CronExpression.Parse(schedule.CronExpression.Trim(), CronFormat.Standard);
+        var from = DateTime.UtcNow;
+
+        for (var i = 0; i < 3; i++)
+        {
+            var next = expression.GetNextOccurrence(from, TimeZoneInfo.Utc);
+            if (!next.HasValue)
+            {
+                break;
+            }
+
+            schedule.NextOccurrences.Add(next.Value.ToString("yyyy-MM-dd HH:mm:ss 'UTC'"));
+            from = next.Value.AddSeconds(1);
+        }
+    }
+
+    private void AddHeader() => _model.Headers.Add(new NamedValue());
+
+    private void RemoveHeader(int index) => _model.Headers.RemoveAt(index);
+
+    private void AddParameter() => _model.Parameters.Add(new NamedValue());
+
+    private void RemoveParameter(int index) => _model.Parameters.RemoveAt(index);
+
+    private static bool TryValidateCron(string? cronExpression, out string? error)
+    {
+        if (string.IsNullOrWhiteSpace(cronExpression))
+        {
+            error = "CRON expression is required.";
+            return false;
+        }
+
+        try
+        {
+            CronExpression.Parse(cronExpression.Trim(), CronFormat.Standard);
+            error = null;
+            return true;
+        }
+        catch (Exception)
+        {
+            error = "Invalid CRON expression. Use standard 5-part format.";
+            return false;
+        }
+    }
+
+    private static string FormatFlag(bool value) => value ? "Yes" : "No";
+
+    private static string FormatLogExecutedAt(DateTime timestamp) =>
+        timestamp.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss");
+
+    private static string FormatDetailValue(string? value, string emptyValue = "—") =>
+        string.IsNullOrWhiteSpace(value) ? emptyValue : value;
+
+    private static string FormatNamedValues(IEnumerable<NamedValue> values)
+    {
+        var lines = values
+            .Select(FormatNamedValue)
+            .Where(formattedValue => !string.IsNullOrWhiteSpace(formattedValue))
+            .ToList();
+
+        return lines.Count == 0 ? string.Empty : string.Join(Environment.NewLine, lines);
+    }
+
+    private static string FormatNamedValue(NamedValue value)
+    {
+        var hasName = !string.IsNullOrWhiteSpace(value.Name);
+        var hasValue = !string.IsNullOrWhiteSpace(value.Value);
+
+        return (hasName, hasValue) switch
+        {
+            (true, true) => $"{value.Name}: {value.Value}",
+            (true, false) => value.Name!,
+            (false, true) => value.Value!,
+            _ => string.Empty
+        };
+    }
+
+    private static string GetRequestUriValue(ApiCallLogDto log) => log.RequestUri ?? string.Empty;
+
+    private static string GetHttpMethodValue(ApiCallLogDto log) =>
+        string.IsNullOrWhiteSpace(log.HttpMethod) ? UnknownHttpMethod : log.HttpMethod;
+
+    private static string GetRequestHeadersValue(ApiCallLogDto log) => FormatNamedValues(log.RequestHeaders);
+
+    private static string GetRequestParametersValue(ApiCallLogDto log) => FormatNamedValues(log.RequestParameters);
+
+    private static string GetRequestBodyValue(ApiCallLogDto log) => log.RequestBody ?? string.Empty;
+
+    private static string GetResponseCodeValue(ApiCallLogDto log) => log.ResponseCode.ToString();
+
+    private static string GetResponseBodyValue(ApiCallLogDto log) => log.ResponseBody ?? string.Empty;
+
+    private static string GetExecutedAtValue(ApiCallLogDto log) => FormatLogExecutedAt(log.ExecutedAt);
+
+    private static string GetDurationMsValue(ApiCallLogDto log) => log.DurationMs.ToString();
+
+    private static string GetSuccessValue(ApiCallLogDto log) => FormatFlag(log.Success);
+
+    private static string GetErrorMessageValue(ApiCallLogDto log) => log.ErrorMessage ?? string.Empty;
+
+    private static bool HasNonEmptyValue(string? value) => !string.IsNullOrWhiteSpace(value);
+
+    private void ShowCopySuccess(string fieldName)
+    {
+        _lastCopiedField = fieldName;
+        _copyErrorMessage = null;
+        StartCopyStatusClear();
+    }
+
+    private void ShowCopyError(string message)
+    {
+        _lastCopiedField = null;
+        _copyErrorMessage = message;
+        StartCopyStatusClear();
+    }
+
+    private void ClearCopyStatus()
+    {
+        _copyStatusMessageVersion++;
+        _lastCopiedField = null;
+        _copyErrorMessage = null;
+    }
+
+    private void StartCopyStatusClear()
+    {
+        _copyStatusMessageVersion++;
+        var statusVersion = _copyStatusMessageVersion;
+        // Intentional fire-and-forget; DismissCopyStatusAsync handles its own exceptions and only clears the latest status message.
+        _ = DismissCopyStatusAsync(statusVersion);
+    }
+
+    private async Task DismissCopyStatusAsync(long statusVersion)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(CopyStatusDisplayDurationSeconds));
+            if (statusVersion != _copyStatusMessageVersion)
+            {
+                return;
+            }
+
+            _lastCopiedField = null;
+            _copyErrorMessage = null;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Unable to clear API call log copy status message");
+        }
+    }
+
+    private sealed class ApiEditorModel
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string HttpMethod { get; set; } = "GET";
+        public string EndpointUrl { get; set; } = string.Empty;
+        public string? Payload { get; set; }
+        public bool IsActive { get; set; } = true;
+        public List<CallCadence.Domain.ApiCall.NamedValue> Headers { get; set; } = [];
+        public List<CallCadence.Domain.ApiCall.NamedValue> Parameters { get; set; } = [];
+    }
+
+    private sealed class ScheduleEditorModel
+    {
+        public Guid? ScheduleId { get; set; }
+        public string CronExpression { get; set; } = "*/15 * * * *";
+        public bool IsEnabled { get; set; } = true;
+        public List<string> NextOccurrences { get; } = [];
+        public string? PreviewError { get; set; }
+    }
+}

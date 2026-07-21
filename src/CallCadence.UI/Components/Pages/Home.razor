@@ -1,0 +1,236 @@
+@page "/"
+@rendermode InteractiveServer
+@using CallCadence.Models.Auth
+@using CallCadence.UI.Services
+@inject CallCadenceApiClient ApiClient
+@inject UserSessionState Session
+@inject NavigationManager NavigationManager
+@implements IDisposable
+
+<PageTitle>Call Cadence</PageTitle>
+
+<MudGrid Justify="Justify.Center" Class="align-stretch" Style="min-height: 100vh;">
+    <MudItem xs="12" sm="12" md="7" Class="d-flex align-center justify-center pa-4">
+        <MudImage Src="/Images/CallCadence-v1-splash.png" Alt="Call Cadence" Fluid="true" />
+    </MudItem>
+
+    <MudItem xs="12" sm="12" md="5" Class="d-flex flex-column justify-center pa-4">
+        <MudPaper Class="pa-6 pa-md-8" Elevation="6">
+            <MudText Typo="Typo.h4" GutterBottom="true">Call Cadence</MudText>
+
+            @if (!_isApiAvailable)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mb-4">
+                    Waiting for API availability
+                </MudAlert>
+                <MudProgressLinear Indeterminate="true" Color="Color.Warning" />
+            }
+            else
+            {
+                @if (_ssoProviders.Count > 0)
+                {
+                    <MudText Typo="Typo.body1" Class="mb-2">
+                        Single sign-on is enabled for this deployment.
+                    </MudText>
+
+                    @foreach (var provider in _ssoProviders)
+                    {
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   Class="mb-2"
+                                   FullWidth="true"
+                                   Disabled="_isSubmitting || string.IsNullOrWhiteSpace(provider.SignInUrl)"
+                                   OnClick="@(() => SignInWithSso(provider.SignInUrl))">
+                            Continue with @provider.Name
+                        </MudButton>
+                    }
+
+                    <MudDivider Class="my-4" />
+                }
+
+                <MudText Typo="Typo.body1" Class="mb-4">
+                    @(_hasAdmin ? "Login with your admin account" : "Create your first admin account")
+                </MudText>
+
+                @if (!string.IsNullOrWhiteSpace(_errorMessage))
+                {
+                    <MudAlert Severity="Severity.Error" Class="mb-4">@_errorMessage</MudAlert>
+                }
+
+                <MudStack Spacing="2">
+                    <MudTextField Label="Email" @bind-Value="_email" InputType="InputType.Email" Required="true" @onkeydown="HandleLoginKeyDown" />
+                    <MudTextField Label="Password" @bind-Value="_password" InputType="InputType.Password" Required="true" @onkeydown="HandleLoginKeyDown" />
+
+                    <MudButton Variant="Variant.Filled"
+                               Color="@(_ssoProviders.Count > 0 ? Color.Secondary : Color.Primary)"
+                               Disabled="_isSubmitting"
+                               OnClick="SubmitAsync">
+                        @(_hasAdmin ? "Sign in with Admin Email" : "Create Admin")
+                    </MudButton>
+                </MudStack>
+            }
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private bool _hasAdmin;
+    private bool _isApiAvailable = false;
+    private bool _isPolling = false;
+    private bool _isSubmitting;
+    private List<SsoProviderInfo> _ssoProviders = [];
+    private string _email = string.Empty;
+    private string _password = string.Empty;
+    private string? _errorMessage;
+    private CancellationTokenSource _cts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!RendererInfo.IsInteractive)
+        {
+            return;
+        }
+
+        await ApiClient.RehydrateSessionAsync();
+
+        if (Session.IsAuthenticated)
+        {
+            NavigationManager.NavigateTo("/dashboard");
+            return;
+        }
+
+        await PollUntilAvailableAsync();
+    }
+
+    private async Task PollUntilAvailableAsync()
+    {
+        if (_isPolling)
+            return;
+
+        _isPolling = true;
+        try
+        {
+            while (!_cts.Token.IsCancellationRequested)
+            {
+                try
+                {
+                    var status = await ApiClient.GetAuthStatusAsync();
+                    _hasAdmin = status.HasAdmin;
+                    _ssoProviders = status.SsoProviders.ToList();
+
+                    if (status.IsAuthenticated && !string.IsNullOrWhiteSpace(status.CurrentUserEmail))
+                    {
+                        Session.SignIn(status.CurrentUserEmail, status.CurrentUserIsAdmin, Session.Token, Session.ExpiresAtUtc);
+                        NavigationManager.NavigateTo("/dashboard");
+                        return;
+                    }
+
+                    _isApiAvailable = true;
+                    _errorMessage = null;
+                    StateHasChanged();
+                    return;
+                }
+                catch
+                {
+                    _isApiAvailable = false;
+                    StateHasChanged();
+                }
+
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(30), _cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+        }
+        finally
+        {
+            _isPolling = false;
+        }
+    }
+
+    private void SignInWithSso(string? signInUrl)
+    {
+        if (string.IsNullOrWhiteSpace(signInUrl))
+            return;
+
+        var returnUrl = NavigationManager.BaseUri.TrimEnd('/');
+        var separator = signInUrl.Contains('?') ? "&" : "?";
+        var urlWithReturn = $"{signInUrl}{separator}returnUrl={Uri.EscapeDataString(returnUrl)}";
+
+        NavigationManager.NavigateTo(urlWithReturn, forceLoad: true);
+    }
+
+    private async Task HandleLoginKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter"
+            && !string.IsNullOrWhiteSpace(_email)
+            && !string.IsNullOrWhiteSpace(_password)
+            && !_isSubmitting
+            && _isApiAvailable)
+        {
+            await SubmitAsync();
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        _errorMessage = null;
+        _isSubmitting = true;
+
+        try
+        {
+            AuthResponse result;
+            if (_hasAdmin)
+            {
+                result = await ApiClient.LoginAsync(new LoginRequest
+                {
+                    Email = _email,
+                    Password = _password
+                });
+            }
+            else
+            {
+                result = await ApiClient.RegisterAdminAsync(new RegisterAdminRequest
+                {
+                    Email = _email,
+                    Password = _password
+                });
+            }
+
+            if (!result.Authenticated || string.IsNullOrWhiteSpace(result.Email))
+            {
+                _errorMessage = result.ErrorMessage ?? "Unable to authenticate.";
+                if (!_hasAdmin)
+                {
+                    var status = await ApiClient.GetAuthStatusAsync();
+                    _hasAdmin = status.HasAdmin;
+                    _ssoProviders = status.SsoProviders.ToList();
+                }
+                return;
+            }
+
+            // Session (including the JWT) is persisted by ApiClient on success.
+            NavigationManager.NavigateTo("/dashboard");
+        }
+        catch (Exception ex)
+        {
+            _isApiAvailable = false;
+            _errorMessage = ApiClient.GetErrorMessage(ex, "Unable to authenticate.");
+            await PollUntilAvailableAsync();
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

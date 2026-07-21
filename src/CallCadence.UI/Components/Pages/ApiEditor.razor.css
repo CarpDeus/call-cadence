@@ -1,0 +1,17 @@
+.call-log-detail-card {
+    height: 100%;
+}
+
+.call-log-detail-value {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--mud-typography-default-family);
+}
+
+.call-log-detail-json {
+    font-family: var(--mud-typography-body2-family, "Roboto", "Helvetica", "Arial", sans-serif);
+}
+
+::deep .call-log-row-selected > td {
+    background-color: color-mix(in srgb, var(--mud-palette-primary, #594AE2) 16%, transparent);
+}

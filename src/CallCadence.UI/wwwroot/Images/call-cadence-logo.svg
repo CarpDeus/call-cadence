@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <style>
+      .navy{fill:#0b1636;}
+      .blue{fill:#1460c8;}
+      .cyan{stroke:#2aa3ff;}
+    </style>
+  </defs>
+  <!-- Hex badge -->
+  <polygon class="navy" points="128,26 210,74 210,182 128,230 46,182 46,74"/>
+  <polygon fill="none" stroke="#2aa3ff" stroke-width="10" stroke-linejoin="round" points="128,26 210,74 210,182 128,230 46,182 46,74"/>
+
+  <!-- Top ticks -->
+  <rect x="94" y="48" width="6" height="16" fill="#2aa3ff"/>
+  <rect x="110" y="48" width="6" height="16" fill="#2aa3ff"/>
+  <rect x="126" y="48" width="6" height="16" fill="#2aa3ff"/>
+  <rect x="142" y="48" width="6" height="16" fill="#2aa3ff"/>
+  <rect x="158" y="48" width="6" height="16" fill="#2aa3ff"/>
+
+  <!-- Chip -->
+  <rect x="58" y="98" width="92" height="60" rx="10" class="blue"/>
+  <text x="104" y="138" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700" fill="#ffffff">API</text>
+
+  <!-- Chip pins -->
+  <g stroke="#2aa3ff" stroke-width="4" fill="#2aa3ff">
+    <line x1="67" y1="158" x2="67" y2="178"/><circle cx="67" cy="182" r="4"/>
+    <line x1="85" y1="158" x2="85" y2="178"/><circle cx="85" cy="182" r="4"/>
+    <line x1="104" y1="158" x2="104" y2="178"/><circle cx="104" cy="182" r="4"/>
+    <line x1="123" y1="158" x2="123" y2="178"/><circle cx="123" cy="182" r="4"/>
+    <line x1="141" y1="158" x2="141" y2="178"/><circle cx="141" cy="182" r="4"/>
+  </g>
+
+  <!-- Clock -->
+  <circle cx="170" cy="128" r="28" fill="none" stroke="#2aa3ff" stroke-width="6"/>
+  <line x1="170" y1="128" x2="170" y2="112" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+  <line x1="170" y1="128" x2="186" y2="128" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- Circular arrow -->
+  <path d="M 202 132 A 38 38 0 0 0 164 92" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  <polygon points="164,92 172,94 167,101" fill="#ffffff"/>
+</svg>

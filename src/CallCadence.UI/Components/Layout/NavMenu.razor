@@ -1,0 +1,18 @@
+@inject CallCadence.UI.Services.UserSessionState Session
+@inject NavigationManager NavigationManager
+
+<MudNavMenu>
+    <MudNavLink Href="/dashboard" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
+    <MudNavLink Href="/api-editing" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Api">API Editing</MudNavLink>
+    @if (Session.IsAdmin)
+    {
+        <MudNavGroup Title="Settings" Icon="@Icons.Material.Filled.Settings" Expanded="@IsSettingsExpanded">
+            <MudNavLink Href="/settings/users" Match="NavLinkMatch.Prefix">Users</MudNavLink>
+            <MudNavLink Href="/settings/sso-configuration" Match="NavLinkMatch.Prefix">SSO Configuration</MudNavLink>
+        </MudNavGroup>
+    }
+</MudNavMenu>
+
+@code {
+    private bool IsSettingsExpanded => NavigationManager.Uri.Contains("/settings", StringComparison.OrdinalIgnoreCase);
+}
