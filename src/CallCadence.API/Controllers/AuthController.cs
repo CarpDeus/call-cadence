@@ -191,7 +191,7 @@ public sealed class AuthController : ControllerBase
             return BadRequest($"SSO provider '{provider}' is not configured or not enabled.");
         }
 
-        var callbackUrl = Url.Action(nameof(SsoCallback), values: new { provider, returnUrl });
+        var callbackUrl = Url.Action(nameof(SsoCallback), null, new { provider, returnUrl }, Request.Scheme, Request.Host.Value);
         var properties = new AuthenticationProperties
         {
             RedirectUri = callbackUrl
@@ -199,26 +199,37 @@ public sealed class AuthController : ControllerBase
         return Challenge(properties, provider);
     }
 
-    [Authorize]
+    // IdentityConstants.ExternalScheme ("Identity.External") is the cookie the OIDC
+    // handler signs into; it cannot be referenced directly because attribute
+    // arguments must be compile-time constants.
+    [Authorize(AuthenticationSchemes = "Identity.External")]
     [HttpGet("sso-callback")]
     public async Task<IActionResult> SsoCallback([FromQuery] string? provider = null, [FromQuery] string? returnUrl = null)
     {
+        var normalizedReturnUrl = NormalizeReturnUrl(returnUrl);
         var allowedUrls = _configuration.GetAllowedUiReturnUrls();
-        if (string.IsNullOrWhiteSpace(returnUrl) || !allowedUrls.Any(allowed => returnUrl.StartsWith(allowed, StringComparison.OrdinalIgnoreCase)))
+        if (string.IsNullOrWhiteSpace(normalizedReturnUrl) ||
+            !allowedUrls.Any(allowed => normalizedReturnUrl.StartsWith(allowed, StringComparison.OrdinalIgnoreCase)))
         {
             return BadRequest("Invalid or missing return URL.");
         }
 
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrWhiteSpace(userId))
+        // The external cookie principal carries the provider's claims, not a local
+        // user id, so map the external identity to a provisioned AdminUser by email.
+        var email = User.FindFirstValue(ClaimTypes.Email)
+            ?? User.FindFirstValue("email")
+            ?? User.FindFirstValue(ClaimTypes.Upn);
+        if (string.IsNullOrWhiteSpace(email))
         {
-            return Unauthorized("User authentication failed.");
+            await HttpContext.SignOutAsync("Identity.External");
+            return Unauthorized("The single sign-on provider did not return an email address.");
         }
 
-        var user = await _userManager.FindByIdAsync(userId);
+        var user = await _userManager.FindByEmailAsync(email);
         if (user == null)
         {
-            return Unauthorized("User not found.");
+            await HttpContext.SignOutAsync("Identity.External");
+            return Unauthorized($"No account is provisioned for '{email}'.");
         }
 
         var roles = await _userManager.GetRolesAsync(user);
@@ -235,8 +246,38 @@ public sealed class AuthController : ControllerBase
             ExpiresAtUtc = DateTime.UtcNow.AddMinutes(expiryMinutes)
         }, TimeSpan.FromMinutes(5));
 
-        var redirectUrl = $"{returnUrl.TrimEnd('/')}/sso-callback?code={code}";
+        // The external cookie was only needed to identify the user; clear it so the
+        // browser is left with the JWT-based session only.
+        await HttpContext.SignOutAsync("Identity.External");
+
+        var redirectUrl = $"{normalizedReturnUrl.TrimEnd('/')}/sso-callback?code={code}";
         return Redirect(redirectUrl);
+    }
+
+    // The UI may URL-encode returnUrl before appending it to the challenge, which
+    // results in a multiply-encoded value by the time it returns here. Decode until
+    // the value is stable (bounded to avoid pathological input) so the allow-list
+    // comparison runs against the real absolute URL.
+    private static string? NormalizeReturnUrl(string? returnUrl)
+    {
+        if (string.IsNullOrWhiteSpace(returnUrl))
+        {
+            return returnUrl;
+        }
+
+        var current = returnUrl;
+        for (var i = 0; i < 5; i++)
+        {
+            var decoded = Uri.UnescapeDataString(current);
+            if (string.Equals(decoded, current, StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            current = decoded;
+        }
+
+        return current;
     }
 
     [HttpPost("sso/exchange")]

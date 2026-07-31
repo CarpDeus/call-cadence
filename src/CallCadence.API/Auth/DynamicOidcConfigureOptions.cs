@@ -1,5 +1,6 @@
 using CallCadence.Infrastructure.ApiCall;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 
 namespace CallCadence.API.Auth;
@@ -66,6 +67,9 @@ internal sealed class DynamicOidcConfigureOptions : IConfigureNamedOptions<OpenI
         if (!string.IsNullOrWhiteSpace(config.CallbackPath))
             options.CallbackPath = config.CallbackPath;
 
+        // OIDC establishes the external identity in the Identity external cookie.
+        // The sso-callback endpoint reads this same scheme to complete sign-in.
+        options.SignInScheme = IdentityConstants.ExternalScheme;
         options.ResponseType = "code";
         options.SaveTokens = true;
         options.GetClaimsFromUserInfoEndpoint = true;
