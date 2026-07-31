@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using BugLogger.Interfaces;
 using CallCadence.API.Auth;
 using CallCadence.Models.Auth;
 using Microsoft.AspNetCore.Authentication;
@@ -20,6 +21,7 @@ public sealed class AuthController : ControllerBase
     private readonly IConfiguration _configuration;
     private readonly IJwtTokenService _jwtTokenService;
     private readonly UserManager<AdminUser> _userManager;
+    private readonly ISentryService _sentryService;
 
     public AuthController(
         IAdminAuthService adminAuthService,
@@ -27,12 +29,14 @@ public sealed class AuthController : ControllerBase
         IMemoryCache memoryCache,
         IConfiguration configuration,
         IJwtTokenService jwtTokenService,
-        UserManager<AdminUser> userManager)
+        UserManager<AdminUser> userManager,
+        ISentryService sentryService)
     {
         _adminAuthService = adminAuthService;
         _ssoConfigurationService = ssoConfigurationService;
         _memoryCache = memoryCache;
         _configuration = configuration;
+        _sentryService = sentryService;
         _jwtTokenService = jwtTokenService;
         _userManager = userManager;
     }
@@ -180,23 +184,33 @@ public sealed class AuthController : ControllerBase
     [HttpGet("sso-challenge")]
     public async Task<IActionResult> SsoChallenge([FromQuery] string? provider = null, [FromQuery] string? returnUrl = null)
     {
-        if (string.IsNullOrWhiteSpace(provider))
+        try
         {
-            return BadRequest("A provider scheme name is required.");
-        }
+            if (string.IsNullOrWhiteSpace(provider))
+            {
+                return BadRequest("A provider scheme name is required.");
+            }
 
-        var config = await _ssoConfigurationService.GetBySchemeNameAsync(provider);
-        if (config is null || !config.IsEnabled)
-        {
-            return BadRequest($"SSO provider '{provider}' is not configured or not enabled.");
-        }
+            var config = await _ssoConfigurationService.GetBySchemeNameAsync(provider);
+            if (config is null || !config.IsEnabled)
+            {
+                return BadRequest($"SSO provider '{provider}' is not configured or not enabled.");
+            }
 
-        var callbackUrl = Url.Action(nameof(SsoCallback), null, new { provider, returnUrl }, Request.Scheme, Request.Host.Value);
-        var properties = new AuthenticationProperties
+            var callbackUrl = Url.Action(nameof(SsoCallback), null, new { provider, returnUrl }, Request.Scheme, Request.Host.Value);
+            var properties = new AuthenticationProperties
+            {
+                RedirectUri = callbackUrl
+            };
+            return Challenge(properties, provider);
+        }
+        catch (Exception ex)
         {
-            RedirectUri = callbackUrl
-        };
-        return Challenge(properties, provider);
+            string sentryTag = Guid.NewGuid().ToString();
+            _sentryService.LogException(ex, "Error during SSO challenge", sentryTag);
+
+            return StatusCode(500, $"An error occurred during SSO challenge. Please contact support with the following reference: {sentryTag}.");
+        }
     }
 
     // IdentityConstants.ExternalScheme ("Identity.External") is the cookie the OIDC

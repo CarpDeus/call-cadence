@@ -1,4 +1,3 @@
-using System.Text;
 using BugLogger.Interfaces;
 using BugLogger.Services;
 using CallCadence.API.Auth;
@@ -19,8 +18,11 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.AddSentry(options => builder.Configuration.Bind("Sentry", options));
 
 // Add services to the container
 builder.Services.AddControllers();
@@ -28,6 +30,7 @@ builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<ISentryService, SentryService>();
 
 // Add HttpClient factory
 builder.Services.AddHttpClient();
