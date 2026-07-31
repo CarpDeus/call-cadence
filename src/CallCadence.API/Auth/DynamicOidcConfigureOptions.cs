@@ -2,6 +2,9 @@ using CallCadence.Infrastructure.ApiCall;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication.OAuth.Claims;
+using Microsoft.AspNetCore.Authentication;
 
 namespace CallCadence.API.Auth;
 
@@ -73,5 +76,19 @@ internal sealed class DynamicOidcConfigureOptions : IConfigureNamedOptions<OpenI
         options.ResponseType = "code";
         options.SaveTokens = true;
         options.GetClaimsFromUserInfoEndpoint = true;
+
+        // Request the standard scopes. "email" must be requested explicitly or
+        // providers such as Authentik will not return the email claim, which the
+        // sso-callback endpoint requires to map the external identity to a user.
+        if (!options.Scope.Contains("openid"))
+            options.Scope.Add("openid");
+        if (!options.Scope.Contains("profile"))
+            options.Scope.Add("profile");
+        if (!options.Scope.Contains("email"))
+            options.Scope.Add("email");
+
+        // Ensure the "email" claim from the userinfo/id_token is surfaced as the
+        // standard ClaimTypes.Email that sso-callback looks up first.
+        options.ClaimActions.MapUniqueJsonKey(ClaimTypes.Email, "email");
     }
 }
