@@ -1,4 +1,3 @@
-using System.Text;
 using BugLogger.Interfaces;
 using BugLogger.Services;
 using CallCadence.API.Auth;
@@ -19,8 +18,11 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.AddSentry(options => builder.Configuration.Bind("Sentry", options));
 
 // Add services to the container
 builder.Services.AddControllers();
@@ -28,6 +30,7 @@ builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<ISentryService, SentryService>();
 
 // Add HttpClient factory
 builder.Services.AddHttpClient();
@@ -103,7 +106,7 @@ var envSsoConfigs = EnvVarSsoConfigurationProvider.TryLoad();
 // Determine which SSO providers to register as named OIDC schemes.
 // When running in Testing mode without a database, fall back to only env-var configs.
 IReadOnlyList<SsoConfiguration> ssoConfigsAtStartup = envSsoConfigs ?? [];
-if (envSsoConfigs is null && !builder.Environment.IsEnvironment("Testing")
+if (envSsoConfigs is null // && !builder.Environment.IsEnvironment("Testing")
     && apiDbConnectionString is not null)
 {
     // Early DB query to discover enabled providers so we can register their schemes.
@@ -219,7 +222,7 @@ if (!ssoConfigsAtStartup.Any())
     });
 }
 
-builder.Services.AddSingleton<IConfigureNamedOptions<OpenIdConnectOptions>>(sp =>
+builder.Services.AddSingleton<IConfigureOptions<OpenIdConnectOptions>>(sp =>
     new DynamicOidcConfigureOptions(
         sp.GetRequiredService<IServiceScopeFactory>(),
         envSsoConfigs));

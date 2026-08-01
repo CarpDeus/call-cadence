@@ -5,7 +5,9 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Moq;
 
 namespace CallCadence.UnitTests.Auth;
 
@@ -51,6 +53,14 @@ public sealed class AdminAuthServiceTests
             .AddEntityFrameworkStores<CallCadenceDbContext>()
             .AddSignInManager<SignInManager<AdminUser>>()
             .AddDefaultTokenProviders();
+
+        var mockJwtTokenService = new Mock<IJwtTokenService>();
+        mockJwtTokenService.Setup(x => x.GenerateToken(It.IsAny<AdminUser>(), It.IsAny<IList<string>>()))
+            .Returns("mock-jwt-token");
+        services.AddSingleton(mockJwtTokenService.Object);
+
+        var mockConfiguration = new Mock<IConfiguration>();
+        services.AddSingleton(mockConfiguration.Object);
 
         _serviceProvider = services.BuildServiceProvider();
         _dbContext = _serviceProvider.GetRequiredService<CallCadenceDbContext>();

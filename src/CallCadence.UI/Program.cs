@@ -52,6 +52,6 @@ app.UseAntiforgery();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
-
+await Task.Delay(10000);
 app.Run();
 
