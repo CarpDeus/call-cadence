@@ -24,7 +24,7 @@ jobs:
         id: tags
         run: |
           TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
-          IMAGE="carpdeus/cadence-caller-api"
+          IMAGE="carpdeus/callcadence.api"
 
           if [ "${{ github.event_name }}" = "push" ]; then
             BRANCH="${{ github.ref_name }}"
