@@ -1,17 +1,11 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
-# GitHub recommends pinning actions to a commit SHA.
-# To get a newer version, you will need to update the SHA.
-# You can also reference a tag or branch, but the action may change without warning.
-
-name: Publish Docker image
+name: Publish cadence-caller-api Docker image
 
 on:
-  release:
-    types: [published]
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
 
 jobs:
   push_to_registry:
@@ -24,7 +18,29 @@ jobs:
       id-token: write
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
+
+      - name: Set image tags
+        id: tags
+        run: |
+          TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
+          IMAGE="carpdeus/cadence-caller-api"
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            BRANCH="${{ github.ref_name }}"
+            if [ "$BRANCH" = "main" ]; then
+              echo "tags=${IMAGE}:latest,${IMAGE}:${TIMESTAMP}" >> "$GITHUB_OUTPUT"
+            elif [ "$BRANCH" = "develop" ]; then
+              echo "tags=${IMAGE}:beta,${IMAGE}:beta-${TIMESTAMP}" >> "$GITHUB_OUTPUT"
+            else
+              SAFE_BRANCH=$(echo "$BRANCH" | tr '/' '-' | tr -cd '[:alnum:]-_.')
+              echo "tags=${IMAGE}:${SAFE_BRANCH},${IMAGE}:${SAFE_BRANCH}-${TIMESTAMP}" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            BRANCH="${{ github.ref_name }}"
+            SAFE_BRANCH=$(echo "$BRANCH" | tr '/' '-' | tr -cd '[:alnum:]-_.')
+            echo "tags=${IMAGE}:${SAFE_BRANCH},${IMAGE}:${SAFE_BRANCH}-${TIMESTAMP}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Log in to Docker Hub
         uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a
@@ -32,25 +48,18 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
-        with:
-          images: carpdeus/call-cadence-api
-
       - name: Build and push Docker image
         id: push
         uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671
         with:
           context: .
-          file: ./Dockerfile
+          file: ./src/CallCadence.API/Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.tags.outputs.tags }}
 
       - name: Generate artifact attestation
         uses: actions/attest@v4
         with:
-          subject-name: index.docker.io/my-docker-hub-namespace/my-docker-hub-repository
+          subject-name: index.docker.io/carpdeus/cadence-caller-api
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
