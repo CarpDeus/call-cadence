@@ -19,6 +19,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,6 +32,18 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<ISentryService, SentryService>();
+
+// When running behind a TLS-terminating reverse proxy (Docker/ingress), honor the
+// X-Forwarded-Proto/For headers so the app builds https redirect URIs (e.g. the
+// OIDC redirect_uri) instead of the internal http scheme. KnownNetworks/KnownProxies
+// are cleared because the proxy address is not known/static in container deployments.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 // Add HttpClient factory
 builder.Services.AddHttpClient();
@@ -348,6 +361,9 @@ if (!app.Environment.IsEnvironment("Testing"))
 }
 
 // Configure the HTTP request pipeline
+// Must run before any middleware that inspects the scheme/host (auth, https
+// redirection, OIDC redirect_uri generation).
+app.UseForwardedHeaders();
 app.UseSwagger();
 app.UseSwaggerUI();
 

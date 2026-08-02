@@ -202,6 +202,26 @@ public sealed class AuthControllerTests
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
+    [Test]
+    public async Task SsoCallback_WhenUnauthenticated_IsProtectedAndDoesNotError()
+    {
+        // The endpoint is gated by the Identity.External cookie scheme. Without that
+        // cookie the request must be rejected (challenge/redirect or Unauthorized) and
+        // must never surface a 500 from the new error-handling wrapper.
+        using var factory = CreateFactory(useTestAuthentication: false);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        Track(factory, client);
+
+        var response = await client.GetAsync(
+            "/api/auth/sso-callback?provider=oidc&returnUrl=https%3A%2F%2Flocalhost");
+
+        response.StatusCode.Should().NotBe(HttpStatusCode.OK);
+        response.StatusCode.Should().NotBe(HttpStatusCode.InternalServerError);
+    }
+
     private WebApplicationFactory<Program> CreateFactory(bool useTestAuthentication)
     {
         var databaseName = $"AuthTestDatabase_{Guid.NewGuid()}";

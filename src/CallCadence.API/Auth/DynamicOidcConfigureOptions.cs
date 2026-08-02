@@ -1,3 +1,4 @@
+using BugLogger.Interfaces;
 using CallCadence.Infrastructure.ApiCall;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Identity;
@@ -5,6 +6,8 @@ using Microsoft.Extensions.Options;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.OAuth.Claims;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 
 namespace CallCadence.API.Auth;
 
@@ -90,5 +93,93 @@ internal sealed class DynamicOidcConfigureOptions : IConfigureNamedOptions<OpenI
         // Ensure the "email" claim from the userinfo/id_token is surfaced as the
         // standard ClaimTypes.Email that sso-callback looks up first.
         options.ClaimActions.MapUniqueJsonKey(ClaimTypes.Email, "email");
+
+        // Capture and log failures that occur inside the OIDC middleware while
+        // processing the signin-{scheme} (signin-oidc) callback. Without these
+        // handlers such failures surface as an unhandled exception with no context.
+        var schemeName = config.SchemeName;
+        options.Events = new OpenIdConnectEvents
+        {
+            OnRemoteFailure = context =>
+            {
+                Redirect(context, LogFailure(context.HttpContext, context.Failure, schemeName, "OIDC remote failure"));
+                return Task.CompletedTask;
+            },
+            OnAuthenticationFailed = context =>
+            {
+                Redirect(context, LogFailure(context.HttpContext, context.Exception, schemeName, "OIDC authentication failed"));
+                return Task.CompletedTask;
+            },
+            OnAccessDenied = context =>
+            {
+                Redirect(context, LogFailure(context.HttpContext, null, schemeName, "OIDC access denied"));
+                return Task.CompletedTask;
+            }
+        };
+    }
+
+    // Issues the redirect (if a target was resolved) and stops the default rethrow so
+    // the user lands on the UI error page instead of an unhandled exception.
+    private static void Redirect<TOptions>(HandleRequestContext<TOptions> context, string? errorRedirect)
+        where TOptions : AuthenticationSchemeOptions
+    {
+        if (errorRedirect is null)
+        {
+            return;
+        }
+
+        context.Response.Redirect(errorRedirect);
+        context.HandleResponse();
+    }
+
+    // Logs the failure to both Sentry and ILogger with a shared reference id and
+    // returns the allow-listed UI error redirect (or null when none is configured).
+    private static string? LogFailure(
+        HttpContext httpContext,
+        Exception? exception,
+        string schemeName,
+        string errorMessage)
+    {
+        var services = httpContext.RequestServices;
+        var reference = Guid.NewGuid().ToString();
+
+        var sentryService = services.GetService<ISentryService>();
+        if (sentryService is not null)
+        {
+            sentryService.SetTag("sso.scheme", schemeName);
+            sentryService.AddContext("sso", new
+            {
+                Scheme = schemeName,
+                Reference = reference,
+                Detail = exception?.Message ?? errorMessage
+            });
+
+            var loggedException = exception ?? new InvalidOperationException(errorMessage);
+            sentryService.LogException(loggedException, errorMessage, reference);
+        }
+
+        var logger = services.GetService<ILogger<DynamicOidcConfigureOptions>>();
+        logger?.LogError(
+            exception,
+            "{ErrorMessage} for scheme '{Scheme}'. Reference: {Reference}",
+            errorMessage,
+            schemeName,
+            reference);
+
+        var configuration = services.GetService<IConfiguration>();
+        return BuildErrorRedirect(configuration, reference);
+    }
+
+    // Builds a redirect to the first allow-listed UI URL so we never emit an
+    // open redirect. Returns null when no allow-listed URL is configured.
+    private static string? BuildErrorRedirect(IConfiguration? configuration, string reference)
+    {
+        var allowedUrl = configuration?.GetAllowedUiReturnUrls().FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(allowedUrl))
+        {
+            return null;
+        }
+
+        return $"{allowedUrl.TrimEnd('/')}/sso-callback?error=sso_failed&reference={Uri.EscapeDataString(reference)}";
     }
 }
