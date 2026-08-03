@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - develop
+      - development
   workflow_dispatch:
 
 jobs:
@@ -30,7 +30,7 @@ jobs:
             BRANCH="${{ github.ref_name }}"
             if [ "$BRANCH" = "main" ]; then
               echo "tags=${IMAGE}:latest,${IMAGE}:${TIMESTAMP}" >> "$GITHUB_OUTPUT"
-            elif [ "$BRANCH" = "develop" ]; then
+            elif [ "$BRANCH" = "development" ]; then
               echo "tags=${IMAGE}:beta,${IMAGE}:beta-${TIMESTAMP}" >> "$GITHUB_OUTPUT"
             else
               SAFE_BRANCH=$(echo "$BRANCH" | tr '/' '-' | tr -cd '[:alnum:]-_.')
@@ -60,6 +60,6 @@ jobs:
       - name: Generate artifact attestation
         uses: actions/attest@v4
         with:
-          subject-name: index.docker.io/carpdeus/cadence-caller-api
+          subject-name: index.docker.io/carpdeus/callcadence.api
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
