@@ -33,6 +33,14 @@
                 <MudTextField Label="Endpoint URL" @bind-Value="_model.EndpointUrl" Required="true" />
                 <MudTextField Label="Payload" @bind-Value="_model.Payload" Lines="5" />
 
+                <MudSelect T="int?" Label="Expected Status Code" @bind-Value="_model.ExpectedStatusCode" Clearable="true"
+                           HelperText="Optional: treat this status code as success even if normally an error">
+                    @foreach (var (statusCode, statusDescription) in HttpStatusCodes)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)statusCode)">@statusCode - @statusDescription</MudSelectItem>
+                    }
+                </MudSelect>
+
                 <MudDivider Class="my-2" />
                 <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
                     <MudText Typo="Typo.h6">Headers</MudText>
@@ -474,6 +482,31 @@
         WriteIndented = true
     };
 
+    private static readonly IReadOnlyList<(int Code, string Description)> HttpStatusCodes =
+    [
+        (200, "OK"),
+        (201, "Created"),
+        (202, "Accepted"),
+        (204, "No Content"),
+        (301, "Moved Permanently"),
+        (302, "Found"),
+        (304, "Not Modified"),
+        (307, "Temporary Redirect"),
+        (308, "Permanent Redirect"),
+        (400, "Bad Request"),
+        (401, "Unauthorized"),
+        (403, "Forbidden"),
+        (404, "Not Found"),
+        (405, "Method Not Allowed"),
+        (409, "Conflict"),
+        (422, "Unprocessable Entity"),
+        (429, "Too Many Requests"),
+        (500, "Internal Server Error"),
+        (502, "Bad Gateway"),
+        (503, "Service Unavailable"),
+        (504, "Gateway Timeout"),
+    ];
+
     private bool _isEditMode;
     private string? _errorMessage;
     private ApiEditorModel _model = new();
@@ -540,6 +573,7 @@
                     EndpointUrl = apiCall.EndpointUrl,
                     Payload = apiCall.Payload,
                     IsActive = apiCall.IsActive,
+                    ExpectedStatusCode = apiCall.ExpectedStatusCode,
                     Headers = apiCall.Headers,
                     Parameters = apiCall.Parameters
                 };
@@ -595,6 +629,7 @@
                     EndpointUrl = _model.EndpointUrl,
                     Payload = _model.Payload,
                     IsActive = _model.IsActive,
+                    ExpectedStatusCode = _model.ExpectedStatusCode,
                     Headers = _model.Headers,
                     Parameters = _model.Parameters
                 });
@@ -609,6 +644,7 @@
                     EndpointUrl = _model.EndpointUrl,
                     Payload = _model.Payload,
                     IsActive = _model.IsActive,
+                    ExpectedStatusCode = _model.ExpectedStatusCode,
                     Headers = _model.Headers,
                     Parameters = _model.Parameters
                 });
@@ -657,6 +693,7 @@
                 HttpMethod = _model.HttpMethod,
                 EndpointUrl = _model.EndpointUrl,
                 Payload = _model.Payload,
+                ExpectedStatusCode = _model.ExpectedStatusCode,
                 Headers = _model.Headers,
                 Parameters = _model.Parameters
             });
@@ -1004,6 +1041,7 @@
         public string EndpointUrl { get; set; } = string.Empty;
         public string? Payload { get; set; }
         public bool IsActive { get; set; } = true;
+        public int? ExpectedStatusCode { get; set; }
         public List<CallCadence.Domain.ApiCall.NamedValue> Headers { get; set; } = [];
         public List<CallCadence.Domain.ApiCall.NamedValue> Parameters { get; set; } = [];
     }

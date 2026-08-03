@@ -115,4 +115,9 @@ public sealed class ApiCallActivityTracker
             _errors.TryRemove(errorId, out _);
         }
     }
+
+    public void ClearAllErrors()
+    {
+        _errors.Clear();
+    }
 }

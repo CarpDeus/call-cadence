@@ -30,4 +30,12 @@ public sealed class DashboardController : ControllerBase
         _activityTracker.ClearErrors(request.ErrorIds);
         return Ok();
     }
+
+    [Authorize]
+    [HttpPost("errors/clear-all")]
+    public ActionResult ClearAllErrors()
+    {
+        _activityTracker.ClearAllErrors();
+        return Ok();
+    }
 }

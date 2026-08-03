@@ -15,4 +15,5 @@ public sealed class CreateApiCallDto
     public List<NamedValue> Headers { get; set; } = [];
     public List<NamedValue> Parameters { get; set; } = [];
     public bool IsActive { get; set; } = true;
+    public int? ExpectedStatusCode { get; set; }
 }
