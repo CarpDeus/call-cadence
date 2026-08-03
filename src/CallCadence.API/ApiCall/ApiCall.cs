@@ -15,6 +15,7 @@ public sealed class ApiCall
     public List<NamedValue> Headers { get; set; } = [];
     public List<NamedValue> Parameters { get; set; } = [];
     public bool IsActive { get; set; }
+    public int? ExpectedStatusCode { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime ModifiedAt { get; set; }
 }

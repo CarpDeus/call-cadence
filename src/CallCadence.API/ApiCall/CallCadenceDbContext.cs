@@ -62,6 +62,7 @@ public sealed class CallCadenceDbContext : IdentityDbContext<AdminUser>, IDataPr
                 .HasConversion(NamedValueListConverter, NamedValueListComparer)
                 .HasColumnType("nvarchar(max)");
             entity.Property(e => e.IsActive).IsRequired();
+            entity.Property(e => e.ExpectedStatusCode);
             entity.Property(e => e.CreatedAt).IsRequired();
             entity.Property(e => e.ModifiedAt).IsRequired();
         });
@@ -101,6 +102,7 @@ public sealed class CallCadenceDbContext : IdentityDbContext<AdminUser>, IDataPr
                 .HasConversion(NamedValueListConverter, NamedValueListComparer)
                 .HasColumnType("nvarchar(max)");
             entity.Property(e => e.IsActive).IsRequired();
+            entity.Property(e => e.ExpectedStatusCode);
             entity.Property(e => e.ArchivedAt).IsRequired();
             entity.Property(e => e.OriginalCreatedAt).IsRequired();
             entity.Property(e => e.OriginalModifiedAt).IsRequired();

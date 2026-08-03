@@ -174,7 +174,7 @@ public sealed class CallApiService
 
             response.ResponseCode = (int)httpResponse.StatusCode;
             response.ResponseBody = await httpResponse.Content.ReadAsStringAsync();
-            response.Success = httpResponse.IsSuccessStatusCode;
+            response.Success = IsSuccessfulResponse(httpResponse, request.ExpectedStatusCode);
             response.DurationMs = stopwatch.ElapsedMilliseconds;
 
             if (!response.Success)
@@ -277,7 +277,7 @@ public sealed class CallApiService
 
                 log.ResponseCode = (int)response.StatusCode;
                 log.ResponseBody = await response.Content.ReadAsStringAsync();
-                log.Success = response.IsSuccessStatusCode;
+                log.Success = IsSuccessfulResponse(response, apiCall.ExpectedStatusCode);
                 log.DurationMs = stopwatch.ElapsedMilliseconds;
 
                 if (!log.Success)
@@ -358,6 +358,16 @@ public sealed class CallApiService
         {
             _recurringJobManager.RemoveIfExists($"schedule-{schedule.Id}");
         }
+    }
+
+    private static bool IsSuccessfulResponse(HttpResponseMessage response, int? expectedStatusCode)
+    {
+        if (expectedStatusCode.HasValue)
+        {
+            return (int)response.StatusCode == expectedStatusCode.Value;
+        }
+
+        return response.IsSuccessStatusCode;
     }
 
     private static bool IsSensitiveHeader(string headerName)

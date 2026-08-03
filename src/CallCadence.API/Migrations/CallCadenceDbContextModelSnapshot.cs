@@ -175,6 +175,9 @@ namespace CallCadence.API.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<int?>("ExpectedStatusCode")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("ModifiedAt")
                         .HasColumnType("datetime2");
 
@@ -236,6 +239,9 @@ namespace CallCadence.API.Migrations
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
+
+                    b.Property<int?>("ExpectedStatusCode")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("OriginalCreatedAt")
                         .HasColumnType("datetime2");

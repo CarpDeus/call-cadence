@@ -5,6 +5,7 @@
 @inject CallCadenceApiClient ApiClient
 @inject UserSessionState Session
 @inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
 
 <PageTitle>API Editing</PageTitle>
 
@@ -74,6 +75,8 @@
     private string? _errorMessage;
     private EnabledFilterOption _enabledFilter = EnabledFilterOption.Enabled;
 
+    private const string FilterStorageKey = "api-editing-filter";
+
     protected override async Task OnInitializedAsync()
     {
         if (!RendererInfo.IsInteractive)
@@ -101,6 +104,19 @@
                 NavigationManager.NavigateTo("/");
                 return;
             }
+        }
+
+        try
+        {
+            var saved = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", FilterStorageKey);
+            if (saved is not null && Enum.TryParse<EnabledFilterOption>(saved, out var parsed))
+            {
+                _enabledFilter = parsed;
+            }
+        }
+        catch
+        {
+            // localStorage may be unavailable; use default
         }
     }
 
@@ -164,6 +180,16 @@
     private async Task OnEnabledFilterChanged(EnabledFilterOption value)
     {
         _enabledFilter = value;
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", FilterStorageKey, value.ToString());
+        }
+        catch
+        {
+            // localStorage may be unavailable; filter change still applied
+        }
+
         if (_table is not null)
         {
             _table.NavigateTo(0);
