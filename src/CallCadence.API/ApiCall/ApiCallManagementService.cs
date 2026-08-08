@@ -33,6 +33,7 @@ public sealed class ApiCallManagementService
             Headers = dto.Headers,
             Parameters = dto.Parameters,
             IsActive = dto.IsActive,
+            ExpectedStatusCode = dto.ExpectedStatusCode,
             CreatedAt = DateTime.UtcNow,
             ModifiedAt = DateTime.UtcNow
         };
@@ -75,6 +76,7 @@ public sealed class ApiCallManagementService
             Headers = existing.Headers,
             Parameters = existing.Parameters,
             IsActive = existing.IsActive,
+            ExpectedStatusCode = existing.ExpectedStatusCode,
             ArchivedAt = DateTime.UtcNow,
             OriginalCreatedAt = existing.CreatedAt,
             OriginalModifiedAt = existing.ModifiedAt
@@ -90,6 +92,7 @@ public sealed class ApiCallManagementService
         existing.Headers = dto.Headers;
         existing.Parameters = dto.Parameters;
         existing.IsActive = dto.IsActive;
+        existing.ExpectedStatusCode = dto.ExpectedStatusCode;
         existing.ModifiedAt = DateTime.UtcNow;
 
         var updated = await _apiCallRepository.UpdateAsync(existing);
@@ -186,6 +189,7 @@ public sealed class ApiCallManagementService
             Headers = apiCall.Headers,
             Parameters = apiCall.Parameters,
             IsActive = apiCall.IsActive,
+            ExpectedStatusCode = apiCall.ExpectedStatusCode,
             CreatedAt = apiCall.CreatedAt,
             ModifiedAt = apiCall.ModifiedAt
         };

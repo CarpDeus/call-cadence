@@ -228,6 +228,11 @@ public sealed class CallCadenceApiClient
         });
     }
 
+    public async Task ClearAllDashboardErrorsAsync()
+    {
+        await _httpClient.PostAsync("api/dashboard/errors/clear-all", null);
+    }
+
     public async Task<List<ApiCallDto>> GetApiCallsAsync()
     {
         return await _httpClient.GetFromJsonAsync<List<ApiCallDto>>("api/ApiCallManagement") ?? [];
