@@ -15,6 +15,7 @@
 
 <PageTitle>@(_isEditMode ? "Edit API" : "Add API")</PageTitle>
 
+<AuthGuard OnAuthenticated="InitializeAsync">
 <MudPaper Class="pa-4" MaxWidth="MaxWidth.Medium">
     <MudText Typo="Typo.h5" Class="mb-4">@(_isEditMode ? "Edit API" : "Add API")</MudText>
 
@@ -471,6 +472,8 @@
     </MudTabs>
 </MudPaper>
 
+</AuthGuard>
+
 @code {
     [Parameter] public Guid? ApiCallId { get; set; }
 
@@ -522,37 +525,8 @@
     private bool _showSelectedLogJson;
     private string _selectedLogJson = string.Empty;
 
-    protected override async Task OnInitializedAsync()
+    private async Task InitializeAsync()
     {
-        if (!RendererInfo.IsInteractive)
-        {
-            return;
-        }
-
-        await ApiClient.RehydrateSessionAsync();
-
-        if (!Session.IsAuthenticated)
-        {
-            try
-            {
-                var status = await ApiClient.GetAuthStatusAsync();
-                if (status.IsAuthenticated && !string.IsNullOrWhiteSpace(status.CurrentUserEmail))
-                {
-                    Session.SignIn(status.CurrentUserEmail, status.CurrentUserIsAdmin, Session.Token, Session.ExpiresAtUtc);
-                }
-                else
-                {
-                    NavigationManager.NavigateTo("/");
-                    return;
-                }
-            }
-            catch (Exception)
-            {
-                NavigationManager.NavigateTo("/");
-                return;
-            }
-        }
-
         _isEditMode = ApiCallId.HasValue;
 
         if (_isEditMode && ApiCallId.HasValue)

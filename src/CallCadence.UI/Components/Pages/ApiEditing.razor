@@ -9,12 +9,13 @@
 
 <PageTitle>API Editing</PageTitle>
 
-@if (!string.IsNullOrWhiteSpace(_errorMessage))
-{
-    <MudAlert Severity="Severity.Error" Class="mb-4">@_errorMessage</MudAlert>
-}
+<AuthGuard>
+    @if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">@_errorMessage</MudAlert>
+    }
 
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
     <MudSelect T="EnabledFilterOption"
                Label="Filter"
                Value="_enabledFilter"
@@ -70,6 +71,8 @@
     </PagerContent>
 </MudTable>
 
+</AuthGuard>
+
 @code {
     private MudTable<ApiCallListItemDto>? _table;
     private string? _errorMessage;
@@ -82,30 +85,6 @@
         if (!RendererInfo.IsInteractive)
         {
             return;
-        }
-
-        await ApiClient.RehydrateSessionAsync();
-
-        if (!Session.IsAuthenticated)
-        {
-            try
-            {
-                var status = await ApiClient.GetAuthStatusAsync();
-                if (status.IsAuthenticated && !string.IsNullOrWhiteSpace(status.CurrentUserEmail))
-                {
-                    Session.SignIn(status.CurrentUserEmail, status.CurrentUserIsAdmin, Session.Token, Session.ExpiresAtUtc);
-                }
-                else
-                {
-                    NavigationManager.NavigateTo("/");
-                    return;
-                }
-            }
-            catch (Exception)
-            {
-                NavigationManager.NavigateTo("/");
-                return;
-            }
         }
 
         try

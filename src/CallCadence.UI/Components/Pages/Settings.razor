@@ -298,6 +298,8 @@
 
     private async Task LoadAsync()
     {
+        await ApiClient.RehydrateSessionAsync();
+
         _isLoaded = false;
         _message = null;
         _messageSeverity = Severity.Info;
