@@ -55,10 +55,10 @@ else if (_isChecking)
         {
             Logger.LogInformation(
                 "Authentication check failed: token expired at {ExpiresAtUtc} UTC for user {Email}. " +
-                "Clearing session and redirecting to login.",
+                "Redirecting to login.",
                 Session.ExpiresAtUtc.Value,
                 Session.Email);
-            await ApiClient.ClearSessionAsync();
+            Session.SignOut();
             _isChecking = false;
             NavigationManager.NavigateTo("/");
             return;

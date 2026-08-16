@@ -307,13 +307,6 @@
         try
         {
             var status = await ApiClient.GetAuthStatusAsync();
-            if (!status.IsAuthenticated)
-            {
-                Session.SignOut();
-                NavigationManager.NavigateTo("/");
-                return;
-            }
-
             if (!status.CurrentUserIsAdmin)
             {
                 NavigationManager.NavigateTo("/dashboard");
