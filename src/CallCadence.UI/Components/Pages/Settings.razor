@@ -298,6 +298,8 @@
 
     private async Task LoadAsync()
     {
+        await ApiClient.RehydrateSessionAsync();
+
         _isLoaded = false;
         _message = null;
         _messageSeverity = Severity.Info;
@@ -305,6 +307,13 @@
         try
         {
             var status = await ApiClient.GetAuthStatusAsync();
+            if (!status.IsAuthenticated)
+            {
+                Session.SignOut();
+                NavigationManager.NavigateTo("/");
+                return;
+            }
+
             if (!status.CurrentUserIsAdmin)
             {
                 NavigationManager.NavigateTo("/dashboard");

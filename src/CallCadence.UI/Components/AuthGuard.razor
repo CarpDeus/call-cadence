@@ -1,0 +1,78 @@
+@using CallCadence.UI.Services
+@inject UserSessionState Session
+@inject CallCadenceApiClient ApiClient
+@inject NavigationManager NavigationManager
+@inject ILogger<AuthGuard> Logger
+
+@if (_isAuthenticated)
+{
+    @ChildContent
+}
+else if (_isChecking)
+{
+    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+}
+
+@code {
+    /// <summary>
+    /// The protected content to render once authentication is confirmed.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Optional callback invoked immediately after authentication is confirmed,
+    /// before the child content is rendered. Use this to perform any
+    /// authenticated initialisation (e.g. loading API data).
+    /// </summary>
+    [Parameter]
+    public EventCallback OnAuthenticated { get; set; }
+
+    private bool _isAuthenticated;
+    private bool _isChecking = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!RendererInfo.IsInteractive)
+        {
+            return;
+        }
+
+        if (!Session.IsAuthenticated)
+        {
+            var rehydrated = await ApiClient.RehydrateSessionAsync();
+            if (!rehydrated)
+            {
+                Logger.LogInformation(
+                    "Authentication check failed: no session found in local storage. Redirecting to login.");
+                _isChecking = false;
+                NavigationManager.NavigateTo("/");
+                return;
+            }
+        }
+
+        if (Session.ExpiresAtUtc.HasValue && Session.ExpiresAtUtc.Value <= DateTime.UtcNow)
+        {
+            Logger.LogInformation(
+                "Authentication check failed: token expired at {ExpiresAtUtc} UTC for user {Email}. " +
+                "Clearing session and redirecting to login.",
+                Session.ExpiresAtUtc.Value,
+                Session.Email);
+            await ApiClient.ClearSessionAsync();
+            _isChecking = false;
+            NavigationManager.NavigateTo("/");
+            return;
+        }
+
+        Logger.LogInformation(
+            "Authentication check passed for user {Email}.", Session.Email);
+
+        _isAuthenticated = true;
+        _isChecking = false;
+
+        if (OnAuthenticated.HasDelegate)
+        {
+            await OnAuthenticated.InvokeAsync();
+        }
+    }
+}
