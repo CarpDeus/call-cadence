@@ -4,6 +4,7 @@ using CallCadence.Infrastructure.ApiCall;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CallCadence.API.Migrations
 {
     [DbContext(typeof(CallCadenceDbContext))]
-    partial class CallCadenceDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260815195451_AddExpectedStatusCodeToApiCall")]
+    partial class AddExpectedStatusCodeToApiCall
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

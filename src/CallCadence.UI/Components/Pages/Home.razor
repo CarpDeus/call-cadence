@@ -95,8 +95,22 @@
 
         if (Session.IsAuthenticated)
         {
-            NavigationManager.NavigateTo("/dashboard");
-            return;
+            try
+            {
+                var status = await ApiClient.GetAuthStatusAsync();
+                if (status.IsAuthenticated && !string.IsNullOrWhiteSpace(status.CurrentUserEmail))
+                {
+                    NavigationManager.NavigateTo("/dashboard");
+                    return;
+                }
+
+                // Persisted token is no longer valid; clear it so we stay on the login page.
+                await ApiClient.ClearSessionAsync();
+            }
+            catch
+            {
+                // API unreachable; fall through to availability polling below.
+            }
         }
 
         await PollUntilAvailableAsync();

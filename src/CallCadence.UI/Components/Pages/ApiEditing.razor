@@ -84,6 +84,8 @@
             return;
         }
 
+        await ApiClient.RehydrateSessionAsync();
+
         if (!Session.IsAuthenticated)
         {
             try
@@ -158,7 +160,7 @@
         catch (HttpRequestException ex) when (ex.StatusCode is System.Net.HttpStatusCode.Unauthorized
             or System.Net.HttpStatusCode.Forbidden)
         {
-            Session.SignOut();
+            await ApiClient.ClearSessionAsync();
             NavigationManager.NavigateTo("/");
             return new TableData<ApiCallListItemDto>
             {

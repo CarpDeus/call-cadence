@@ -8,6 +8,9 @@
         },
         {
             "file": "/.vscode/instructions/clean-architecture.instructions.md"
+        },
+        {
+            "file": "/.vscode/instructions/ef-migrations.instructions.md"
         }
     ],
     "github.copilot.chat.reviewSelection.enabled": true,
@@ -20,6 +23,9 @@
         },
         {
             "file": "/.vscode/instructions/clean-architecture.instructions.md"
+        },
+        {
+            "file": "/.vscode/instructions/ef-migrations.instructions.md"
         }
     ],
     "github.copilot.chat.testGeneration.instructions": [

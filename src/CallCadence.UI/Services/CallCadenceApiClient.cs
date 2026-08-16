@@ -74,6 +74,20 @@ public sealed class CallCadenceApiClient
         await _jsRuntime.InvokeVoidAsync("callCadenceAuth.clearToken");
     }
 
+    public async Task ClearSessionAsync()
+    {
+        _session.SignOut();
+
+        try
+        {
+            await _jsRuntime.InvokeVoidAsync("callCadenceAuth.clearToken");
+        }
+        catch
+        {
+            // Best-effort; the persisted token is cleared where storage is available.
+        }
+    }
+
     public async Task<AuthResponse> RegisterAdminAsync(RegisterAdminRequest request)
     {
         using var response = await _httpClient.PostAsJsonAsync("api/auth/register", request);
