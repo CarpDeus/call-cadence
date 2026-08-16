@@ -7,6 +7,8 @@
 @inject CallCadenceApiClient ApiClient
 @inject UserSessionState Session
 @inject NavigationManager NavigationManager
+@inject IConfiguration Configuration
+@inject ILogger<Dashboard> Logger
 
 <PageTitle>Dashboard</PageTitle>
 
@@ -180,6 +182,17 @@ else
             {
                 // If rehydration fails, continue as unauthenticated (read-only)
             }
+        }
+
+        // The dashboard can be configured to require authentication. When the flag is
+        // enabled and no valid session exists, redirect to the login page.
+        var requireAuth = Configuration.GetValue("Auth:RequireAuthForDashboard", false);
+        if (requireAuth && !Session.IsAuthenticated)
+        {
+            Logger.LogInformation(
+                "Auth: dashboard requires authentication (Auth:RequireAuthForDashboard=true) but no session is present; redirecting to login.");
+            NavigationManager.NavigateTo("/");
+            return;
         }
 
         _errorMessage = null;

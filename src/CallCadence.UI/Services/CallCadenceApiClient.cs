@@ -15,13 +15,16 @@ public sealed class CallCadenceApiClient
 {
     private readonly HttpClient _httpClient;
     private readonly UserSessionState _session;
-    private readonly IJSRuntime _jsRuntime;
+    private readonly TokenAuthenticationStateProvider _authProvider;
 
-    public CallCadenceApiClient(HttpClient httpClient, UserSessionState session, IJSRuntime jsRuntime)
+    public CallCadenceApiClient(
+        HttpClient httpClient,
+        UserSessionState session,
+        TokenAuthenticationStateProvider authProvider)
     {
         _httpClient = httpClient;
         _session = session;
-        _jsRuntime = jsRuntime;
+        _authProvider = authProvider;
     }
 
     public Uri BaseAddress => _httpClient.BaseAddress ?? new Uri("http://localhost:5108");
@@ -70,22 +73,12 @@ public sealed class CallCadenceApiClient
             // Best-effort server logout; local session is cleared regardless.
         }
 
-        _session.SignOut();
-        await _jsRuntime.InvokeVoidAsync("callCadenceAuth.clearToken");
+        await _authProvider.SignOutAsync();
     }
 
     public async Task ClearSessionAsync()
     {
-        _session.SignOut();
-
-        try
-        {
-            await _jsRuntime.InvokeVoidAsync("callCadenceAuth.clearToken");
-        }
-        catch
-        {
-            // Best-effort; the persisted token is cleared where storage is available.
-        }
+        await _authProvider.SignOutAsync();
     }
 
     public async Task<AuthResponse> RegisterAdminAsync(RegisterAdminRequest request)
@@ -137,13 +130,7 @@ public sealed class CallCadenceApiClient
             return;
         }
 
-        _session.SignIn(authResponse.Email, authResponse.IsAdmin, authResponse.Token, authResponse.ExpiresAtUtc);
-        await _jsRuntime.InvokeVoidAsync(
-            "callCadenceAuth.setToken",
-            authResponse.Token,
-            authResponse.Email,
-            authResponse.IsAdmin,
-            authResponse.ExpiresAtUtc?.ToString("o"));
+        await _authProvider.SignInAsync(authResponse);
     }
 
     public async Task<bool> RehydrateSessionAsync()
@@ -153,15 +140,10 @@ public sealed class CallCadenceApiClient
             return true;
         }
 
-        var stored = await _jsRuntime.InvokeAsync<StoredSession?>("callCadenceAuth.getSession");
-        if (stored is null || string.IsNullOrWhiteSpace(stored.Token) || string.IsNullOrWhiteSpace(stored.Email))
-        {
-            return false;
-        }
-
-        DateTime? expiresAtUtc = DateTime.TryParse(stored.ExpiresAtUtc, out var parsed) ? parsed.ToUniversalTime() : null;
-        _session.SignIn(stored.Email, stored.IsAdmin, stored.Token, expiresAtUtc);
-        return true;
+        // Triggers ProtectedBrowserStorage read (when interop is available) and keeps
+        // UserSessionState in sync as a side effect.
+        await _authProvider.GetAuthenticationStateAsync();
+        return _session.IsAuthenticated;
     }
 
 

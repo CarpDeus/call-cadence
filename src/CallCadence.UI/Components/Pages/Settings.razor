@@ -1,5 +1,6 @@
 @page "/settings"
 @page "/settings/{Section}"
+@attribute [Authorize(Roles = "Admin")]
 @rendermode InteractiveServer
 @using CallCadence.Models.Auth
 @using CallCadence.UI.Services

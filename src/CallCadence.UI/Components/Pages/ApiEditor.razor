@@ -1,5 +1,6 @@
 @page "/api-editing/new"
 @page "/api-editing/{ApiCallId:guid}"
+@attribute [Authorize]
 @rendermode InteractiveServer
 @using System.Text.Json
 @using CallCadence.Application.ApiCall

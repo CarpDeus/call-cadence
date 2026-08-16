@@ -21,14 +21,34 @@ public sealed class BearerTokenHandler : DelegatingHandler
         if (!string.IsNullOrWhiteSpace(_session.Token))
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _session.Token);
+            _logger.LogDebug(
+                "Auth: attaching bearer token to {Method} {RequestUri} for user {Email}.",
+                request.Method,
+                request.RequestUri,
+                _session.Email);
         }
         else
         {
             _logger.LogDebug(
-                "API call to {RequestUri} sent without authentication: no bearer token is present in the current session.",
+                "Auth: API call to {Method} {RequestUri} sent without authentication: no bearer token is present in the current session.",
+                request.Method,
                 request.RequestUri);
         }
 
-        return await base.SendAsync(request, cancellationToken);
+        var response = await base.SendAsync(request, cancellationToken);
+
+        if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized
+            or System.Net.HttpStatusCode.Forbidden)
+        {
+            _logger.LogWarning(
+                "Auth: {Method} {RequestUri} returned {StatusCode}. Token present: {HasToken}. " +
+                "The API rejected the credentials (expired/invalid token or insufficient role).",
+                request.Method,
+                request.RequestUri,
+                (int)response.StatusCode,
+                !string.IsNullOrWhiteSpace(_session.Token));
+        }
+
+        return response;
     }
 }

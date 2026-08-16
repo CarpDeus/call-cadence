@@ -1,78 +1,44 @@
-@using CallCadence.UI.Services
-@inject UserSessionState Session
-@inject CallCadenceApiClient ApiClient
-@inject NavigationManager NavigationManager
-@inject ILogger<AuthGuard> Logger
-
-@if (_isAuthenticated)
-{
-    @ChildContent
-}
-else if (_isChecking)
-{
-    <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
-}
+@*
+    Functional authentication guard built on the standard Blazor auth stack.
+    Wrap protected markup in <AuthGuard> (optionally with Roles="Admin") to render it
+    only for authenticated (and, when specified, appropriately-roled) users.
+    Unauthenticated users are redirected to the login page; authorized-but-wrong-role
+    users see the NotAuthorized content.
+*@
+<AuthorizeView Roles="@Roles" Context="authContext">
+    <Authorized>
+        @ChildContent
+    </Authorized>
+    <NotAuthorized>
+        @if (NotAuthorized is not null)
+        {
+            @NotAuthorized
+        }
+        else
+        {
+            <RedirectToLogin />
+        }
+    </NotAuthorized>
+</AuthorizeView>
 
 @code {
     /// <summary>
-    /// The protected content to render once authentication is confirmed.
+    /// The protected content to render once authentication (and any required role) is confirmed.
     /// </summary>
     [Parameter]
     public RenderFragment? ChildContent { get; set; }
 
     /// <summary>
-    /// Optional callback invoked immediately after authentication is confirmed,
-    /// before the child content is rendered. Use this to perform any
-    /// authenticated initialisation (e.g. loading API data).
+    /// Optional comma-separated list of roles required to view the content (e.g. "Admin").
+    /// When empty, any authenticated user is allowed.
     /// </summary>
     [Parameter]
-    public EventCallback OnAuthenticated { get; set; }
+    public string? Roles { get; set; }
 
-    private bool _isAuthenticated;
-    private bool _isChecking = true;
-
-    protected override async Task OnInitializedAsync()
-    {
-        if (!RendererInfo.IsInteractive)
-        {
-            return;
-        }
-
-        if (!Session.IsAuthenticated)
-        {
-            var rehydrated = await ApiClient.RehydrateSessionAsync();
-            if (!rehydrated)
-            {
-                Logger.LogInformation(
-                    "Authentication check failed: no session found in local storage. Redirecting to login.");
-                _isChecking = false;
-                NavigationManager.NavigateTo("/");
-                return;
-            }
-        }
-
-        if (Session.ExpiresAtUtc.HasValue && Session.ExpiresAtUtc.Value <= DateTime.UtcNow)
-        {
-            Logger.LogInformation(
-                "Authentication check failed: token expired at {ExpiresAtUtc} UTC for user {Email}. " +
-                "Redirecting to login.",
-                Session.ExpiresAtUtc.Value,
-                Session.Email);
-            Session.SignOut();
-            _isChecking = false;
-            NavigationManager.NavigateTo("/");
-            return;
-        }
-
-        Logger.LogInformation(
-            "Authentication check passed for user {Email}.", Session.Email);
-
-        _isAuthenticated = true;
-        _isChecking = false;
-
-        if (OnAuthenticated.HasDelegate)
-        {
-            await OnAuthenticated.InvokeAsync();
-        }
-    }
+    /// <summary>
+    /// Optional content shown when the user is not authorized. Defaults to redirecting
+    /// unauthenticated users to the login page.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? NotAuthorized { get; set; }
 }

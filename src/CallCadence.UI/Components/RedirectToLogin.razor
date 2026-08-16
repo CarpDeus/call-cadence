@@ -1,0 +1,25 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@inject NavigationManager NavigationManager
+@inject ILogger<RedirectToLogin> Logger
+
+<MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+
+@code {
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        var returnUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        Logger.LogInformation(
+            "Auth: unauthenticated access to {ReturnUrl}; redirecting to login.", returnUrl);
+
+        var target = string.IsNullOrWhiteSpace(returnUrl) || returnUrl == "/"
+            ? "/"
+            : $"/?returnUrl={Uri.EscapeDataString(returnUrl)}";
+
+        NavigationManager.NavigateTo(target, forceLoad: false);
+    }
+}
