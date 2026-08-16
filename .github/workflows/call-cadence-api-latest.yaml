@@ -3,7 +3,7 @@ name: Publish cadence-caller-api Docker image
 on:
   push:
     branches:
-      - main
+      - master
       - development
   workflow_dispatch:
 
@@ -28,7 +28,7 @@ jobs:
 
           if [ "${{ github.event_name }}" = "push" ]; then
             BRANCH="${{ github.ref_name }}"
-            if [ "$BRANCH" = "main" ]; then
+            if [ "$BRANCH" = "master" ]; then
               echo "tags=${IMAGE}:latest,${IMAGE}:${TIMESTAMP}" >> "$GITHUB_OUTPUT"
             elif [ "$BRANCH" = "development" ]; then
               echo "tags=${IMAGE}:beta,${IMAGE}:beta-${TIMESTAMP}" >> "$GITHUB_OUTPUT"
