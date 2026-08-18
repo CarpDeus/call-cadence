@@ -33,6 +33,7 @@ public sealed class ApiCallManagementService
             Headers = dto.Headers,
             Parameters = dto.Parameters,
             IsActive = dto.IsActive,
+            LogErrorsToSentry = dto.LogErrorsToSentry,
             ExpectedStatusCode = dto.ExpectedStatusCode,
             CreatedAt = DateTime.UtcNow,
             ModifiedAt = DateTime.UtcNow
@@ -76,6 +77,7 @@ public sealed class ApiCallManagementService
             Headers = existing.Headers,
             Parameters = existing.Parameters,
             IsActive = existing.IsActive,
+            LogErrorsToSentry = existing.LogErrorsToSentry,
             ExpectedStatusCode = existing.ExpectedStatusCode,
             ArchivedAt = DateTime.UtcNow,
             OriginalCreatedAt = existing.CreatedAt,
@@ -92,6 +94,7 @@ public sealed class ApiCallManagementService
         existing.Headers = dto.Headers;
         existing.Parameters = dto.Parameters;
         existing.IsActive = dto.IsActive;
+        existing.LogErrorsToSentry = dto.LogErrorsToSentry;
         existing.ExpectedStatusCode = dto.ExpectedStatusCode;
         existing.ModifiedAt = DateTime.UtcNow;
 
@@ -189,6 +192,7 @@ public sealed class ApiCallManagementService
             Headers = apiCall.Headers,
             Parameters = apiCall.Parameters,
             IsActive = apiCall.IsActive,
+            LogErrorsToSentry = apiCall.LogErrorsToSentry,
             ExpectedStatusCode = apiCall.ExpectedStatusCode,
             CreatedAt = apiCall.CreatedAt,
             ModifiedAt = apiCall.ModifiedAt
