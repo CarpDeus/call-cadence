@@ -291,7 +291,7 @@ public sealed class CallApiService
                 if (!log.Success)
                 {
                     log.ErrorMessage = $"HTTP {log.ResponseCode} returned.";
-                    TryLogToSentry(apiCall, new Exception(log.ErrorMessage), log.ErrorMessage);
+                    TryLogToSentry(apiCall, exception: null, log.ErrorMessage);
                 }
             }
             catch (Exception ex)
@@ -363,15 +363,17 @@ public sealed class CallApiService
         await UpdateApiCallStatsAsync(success: false, log.ExecutedAt);
     }
 
-    private void TryLogToSentry(Domain.ApiCall.ApiCall apiCall, Exception exception, string? errorMessage)
+    private void TryLogToSentry(Domain.ApiCall.ApiCall apiCall, Exception? exception, string? errorMessage)
     {
         if (!apiCall.LogErrorsToSentry)
         {
             return;
         }
 
-        var message = string.IsNullOrWhiteSpace(errorMessage) ? exception.Message : errorMessage;
-        _sentryService.LogException(exception, message, apiCall.Id.ToString());
+        var message = string.IsNullOrWhiteSpace(errorMessage)
+            ? exception?.Message ?? "Unknown API call failure."
+            : errorMessage;
+        _sentryService.LogException(exception ?? new Exception(message), message, apiCall.Id.ToString());
     }
 
     private async Task UpdateApiCallStatsAsync(bool success, DateTime executedAt)

@@ -1022,7 +1022,7 @@
         public string EndpointUrl { get; set; } = string.Empty;
         public string? Payload { get; set; }
         public bool IsActive { get; set; } = true;
-        public bool LogErrorsToSentry { get; set; }
+        public bool LogErrorsToSentry { get; set; } = false;
         public int? ExpectedStatusCode { get; set; }
         public List<CallCadence.Domain.ApiCall.NamedValue> Headers { get; set; } = [];
         public List<CallCadence.Domain.ApiCall.NamedValue> Parameters { get; set; } = [];
