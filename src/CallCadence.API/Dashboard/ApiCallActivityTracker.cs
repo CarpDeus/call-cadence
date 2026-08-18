@@ -10,7 +10,7 @@ public sealed class ApiCallActivityTracker
     private readonly ConcurrentDictionary<Guid, ActiveApiCallDto> _activeCalls = new();
     private readonly ConcurrentDictionary<Guid, DashboardErrorDto> _errors = new();
     private readonly ConcurrentQueue<Guid> _errorOrder = new();
-    private readonly object _recentSuccessLock = new();
+    private readonly object _statsLock = new();
     private readonly LinkedList<RecentSuccessfulCallDto> _recentSuccessfulCalls = new();
     private long _successfulCalls;
     private long _errorCount;
@@ -48,7 +48,7 @@ public sealed class ApiCallActivityTracker
                 CompletedAt = completedAt
             };
 
-            lock (_recentSuccessLock)
+            lock (_statsLock)
             {
                 _lastSuccessfulCallAt = completedAt;
                 _recentSuccessfulCalls.AddFirst(recentCall);
@@ -71,7 +71,7 @@ public sealed class ApiCallActivityTracker
                 OccurredAt = completedAt
             };
 
-            lock (_recentSuccessLock)
+            lock (_statsLock)
             {
                 _lastErroredCallAt = completedAt;
             }
@@ -102,7 +102,7 @@ public sealed class ApiCallActivityTracker
         List<RecentSuccessfulCallDto> recentSuccessfulCalls;
         DateTime? lastSuccessfulCallAt;
         DateTime? lastErroredCallAt;
-        lock (_recentSuccessLock)
+        lock (_statsLock)
         {
             recentSuccessfulCalls = [.. _recentSuccessfulCalls];
             lastSuccessfulCallAt = _lastSuccessfulCallAt;
