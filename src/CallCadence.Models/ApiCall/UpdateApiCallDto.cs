@@ -16,5 +16,6 @@ public sealed class UpdateApiCallDto
     public List<NamedValue> Headers { get; set; } = [];
     public List<NamedValue> Parameters { get; set; } = [];
     public bool IsActive { get; set; }
+    public bool LogErrorsToSentry { get; set; }
     public int? ExpectedStatusCode { get; set; }
 }

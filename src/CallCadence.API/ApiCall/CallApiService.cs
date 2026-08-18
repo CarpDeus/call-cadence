@@ -63,6 +63,7 @@ public sealed class CallApiService
         {
             var title = "Unknown API Call";
             var startedAt = DateTime.UtcNow;
+            var logErrorsToSentry = false;
 
             try
             {
@@ -75,6 +76,7 @@ public sealed class CallApiService
                 }
 
                 title = apiCall.Title;
+                logErrorsToSentry = apiCall.LogErrorsToSentry;
                 if (!apiCall.IsActive)
                 {
                     await UnscheduleApiCallAsync(apiCall.Id);
@@ -94,7 +96,13 @@ public sealed class CallApiService
             }
             catch (Exception ex)
             {
-                await RegisterImmediateErrorAsync(apiCallId, title, startedAt, $"Unexpected error: {ex.Message}");
+                await RegisterImmediateErrorAsync(
+                    apiCallId,
+                    title,
+                    startedAt,
+                    $"Unexpected error: {ex.Message}",
+                    logErrorsToSentry,
+                    ex);
             }
         }
     }
@@ -283,6 +291,7 @@ public sealed class CallApiService
                 if (!log.Success)
                 {
                     log.ErrorMessage = $"HTTP {log.ResponseCode} returned.";
+                    TryLogToSentry(apiCall, exception: null, log.ErrorMessage);
                 }
             }
             catch (Exception ex)
@@ -292,6 +301,7 @@ public sealed class CallApiService
                 log.Success = false;
                 log.ErrorMessage = ex.Message;
                 log.DurationMs = stopwatch.ElapsedMilliseconds;
+                TryLogToSentry(apiCall, ex, log.ErrorMessage);
             }
         }
 
@@ -309,9 +319,15 @@ public sealed class CallApiService
         await UpdateApiCallStatsAsync(log.Success, completedAt);
     }
 
-    private async Task RegisterImmediateErrorAsync(Guid apiCallId, string title, DateTime startedAt, string errorMessage)
+    private async Task RegisterImmediateErrorAsync(
+        Guid apiCallId,
+        string title,
+        DateTime startedAt,
+        string errorMessage,
+        bool logErrorsToSentry,
+        Exception? exception = null)
     {
-        await LogErrorAsync(apiCallId, errorMessage);
+        await LogErrorAsync(apiCallId, errorMessage, logErrorsToSentry, exception);
 
         var completionEvent = _activityTracker.MarkCompleted(
             apiCallId,
@@ -324,7 +340,7 @@ public sealed class CallApiService
         await _hubContext.Clients.All.SendAsync("ApiCallCompleted", completionEvent);
     }
 
-    private async Task LogErrorAsync(Guid apiCallId, string errorMessage)
+    private async Task LogErrorAsync(Guid apiCallId, string errorMessage, bool logErrorsToSentry, Exception? exception = null)
     {
         var log = new ApiCallLog
         {
@@ -337,10 +353,27 @@ public sealed class CallApiService
             DurationMs = 0
         };
 
-        var sentryTag = apiCallId.ToString();
-        _sentryService.LogException(new Exception(errorMessage), errorMessage, sentryTag);
+        if (logErrorsToSentry)
+        {
+            var sentryTag = apiCallId.ToString();
+            _sentryService.LogException(exception ?? new Exception(errorMessage), errorMessage, sentryTag);
+        }
+
         await _logRepository.CreateAsync(log);
         await UpdateApiCallStatsAsync(success: false, log.ExecutedAt);
+    }
+
+    private void TryLogToSentry(Domain.ApiCall.ApiCall apiCall, Exception? exception, string? errorMessage)
+    {
+        if (!apiCall.LogErrorsToSentry)
+        {
+            return;
+        }
+
+        var message = string.IsNullOrWhiteSpace(errorMessage)
+            ? exception?.Message ?? "Unknown API call failure."
+            : errorMessage;
+        _sentryService.LogException(exception ?? new Exception(message), message, apiCall.Id.ToString());
     }
 
     private async Task UpdateApiCallStatsAsync(bool success, DateTime executedAt)

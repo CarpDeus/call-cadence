@@ -527,6 +527,108 @@ public sealed class CallApiServiceTests
         (await dbContext.ApiCallSchedules.CountAsync()).Should().Be(0);
     }
 
+    [Test]
+    public async Task ExecuteApiCallAsync_ShouldLogExceptionToSentry_WhenApiCallFailsAndFlagEnabled()
+    {
+        // Arrange
+        var apiCallId = Guid.NewGuid();
+        var handler = new TestHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        var httpClient = new HttpClient(handler);
+        var apiCall = new ApiCall
+        {
+            Id = apiCallId,
+            Title = "Sentry Enabled API",
+            Description = "Test",
+            HttpMethod = "GET",
+            EndpointUrl = "https://example.com/api",
+            IsActive = true,
+            LogErrorsToSentry = true
+        };
+
+        var mockApiCallRepository = new Mock<IApiCallRepository>();
+        mockApiCallRepository.Setup(r => r.GetByIdAsync(apiCallId))
+            .ReturnsAsync(apiCall);
+
+        var mockLogRepository = new Mock<IApiCallLogRepository>();
+        mockLogRepository.Setup(r => r.CreateAsync(It.IsAny<ApiCallLog>()))
+            .ReturnsAsync((ApiCallLog log) => log);
+
+        var mockHttpClientFactory = new Mock<IHttpClientFactory>();
+        mockHttpClientFactory.Setup(f => f.CreateClient(It.IsAny<string>()))
+            .Returns(httpClient);
+
+        var mockSentryService = new Mock<ISentryService>();
+
+        var service = new CallApiService(
+            mockApiCallRepository.Object,
+            mockLogRepository.Object,
+            mockHttpClientFactory.Object,
+            mockSentryService.Object,
+            new ApiCallActivityTracker(),
+            CreateHubContextMock().Object,
+            CreateDbContext(),
+            new Mock<IRecurringJobManager>().Object);
+
+        // Act
+        await service.ExecuteApiCallAsync(apiCallId, Guid.NewGuid());
+
+        // Assert
+        mockSentryService.Verify(
+            s => s.LogException(It.IsAny<Exception>(), "HTTP 500 returned.", apiCallId.ToString()),
+            Times.Once);
+    }
+
+    [Test]
+    public async Task ExecuteApiCallAsync_ShouldNotLogExceptionToSentry_WhenApiCallFailsAndFlagDisabled()
+    {
+        // Arrange
+        var apiCallId = Guid.NewGuid();
+        var handler = new TestHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        var httpClient = new HttpClient(handler);
+        var apiCall = new ApiCall
+        {
+            Id = apiCallId,
+            Title = "Sentry Disabled API",
+            Description = "Test",
+            HttpMethod = "GET",
+            EndpointUrl = "https://example.com/api",
+            IsActive = true,
+            LogErrorsToSentry = false
+        };
+
+        var mockApiCallRepository = new Mock<IApiCallRepository>();
+        mockApiCallRepository.Setup(r => r.GetByIdAsync(apiCallId))
+            .ReturnsAsync(apiCall);
+
+        var mockLogRepository = new Mock<IApiCallLogRepository>();
+        mockLogRepository.Setup(r => r.CreateAsync(It.IsAny<ApiCallLog>()))
+            .ReturnsAsync((ApiCallLog log) => log);
+
+        var mockHttpClientFactory = new Mock<IHttpClientFactory>();
+        mockHttpClientFactory.Setup(f => f.CreateClient(It.IsAny<string>()))
+            .Returns(httpClient);
+
+        var mockSentryService = new Mock<ISentryService>();
+
+        var service = new CallApiService(
+            mockApiCallRepository.Object,
+            mockLogRepository.Object,
+            mockHttpClientFactory.Object,
+            mockSentryService.Object,
+            new ApiCallActivityTracker(),
+            CreateHubContextMock().Object,
+            CreateDbContext(),
+            new Mock<IRecurringJobManager>().Object);
+
+        // Act
+        await service.ExecuteApiCallAsync(apiCallId, Guid.NewGuid());
+
+        // Assert
+        mockSentryService.Verify(
+            s => s.LogException(It.IsAny<Exception>(), It.IsAny<string>(), It.IsAny<string>()),
+            Times.Never);
+    }
+
     private static CallCadenceDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<CallCadenceDbContext>()
