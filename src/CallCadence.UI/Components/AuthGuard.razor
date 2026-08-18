@@ -7,6 +7,9 @@
 *@
 <AuthorizeView Roles="@Roles" Context="authContext">
     <Authorized>
+        @{
+            NotifyAuthenticated();
+        }
         @ChildContent
     </Authorized>
     <NotAuthorized>
@@ -41,4 +44,24 @@
     /// </summary>
     [Parameter]
     public RenderFragment? NotAuthorized { get; set; }
+
+    /// <summary>
+    /// Optional callback invoked once after authentication (and any required role) is
+    /// confirmed, allowing protected pages to run initialization logic only when authorized.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnAuthenticated { get; set; }
+
+    private bool _authenticatedNotified;
+
+    private void NotifyAuthenticated()
+    {
+        if (_authenticatedNotified || !OnAuthenticated.HasDelegate)
+        {
+            return;
+        }
+
+        _authenticatedNotified = true;
+        _ = OnAuthenticated.InvokeAsync();
+    }
 }
