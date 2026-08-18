@@ -10,10 +10,12 @@ public sealed class ApiCallActivityTracker
     private readonly ConcurrentDictionary<Guid, ActiveApiCallDto> _activeCalls = new();
     private readonly ConcurrentDictionary<Guid, DashboardErrorDto> _errors = new();
     private readonly ConcurrentQueue<Guid> _errorOrder = new();
-    private readonly object _recentSuccessLock = new();
+    private readonly object _statsLock = new();
     private readonly LinkedList<RecentSuccessfulCallDto> _recentSuccessfulCalls = new();
     private long _successfulCalls;
     private long _errorCount;
+    private DateTime? _lastSuccessfulCallAt;
+    private DateTime? _lastErroredCallAt;
 
     public DateTime StartedAt { get; } = DateTime.UtcNow;
 
@@ -46,8 +48,9 @@ public sealed class ApiCallActivityTracker
                 CompletedAt = completedAt
             };
 
-            lock (_recentSuccessLock)
+            lock (_statsLock)
             {
+                _lastSuccessfulCallAt = completedAt;
                 _recentSuccessfulCalls.AddFirst(recentCall);
                 while (_recentSuccessfulCalls.Count > MaxRecentSuccessfulCalls)
                 {
@@ -67,6 +70,11 @@ public sealed class ApiCallActivityTracker
                 ErrorMessage = errorMessage ?? "Unknown error",
                 OccurredAt = completedAt
             };
+
+            lock (_statsLock)
+            {
+                _lastErroredCallAt = completedAt;
+            }
 
             _errors[dashboardError.Id] = dashboardError;
             _errorOrder.Enqueue(dashboardError.Id);
@@ -92,9 +100,13 @@ public sealed class ApiCallActivityTracker
     public DashboardStateDto GetState()
     {
         List<RecentSuccessfulCallDto> recentSuccessfulCalls;
-        lock (_recentSuccessLock)
+        DateTime? lastSuccessfulCallAt;
+        DateTime? lastErroredCallAt;
+        lock (_statsLock)
         {
             recentSuccessfulCalls = [.. _recentSuccessfulCalls];
+            lastSuccessfulCallAt = _lastSuccessfulCallAt;
+            lastErroredCallAt = _lastErroredCallAt;
         }
 
         return new DashboardStateDto

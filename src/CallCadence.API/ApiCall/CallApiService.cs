@@ -306,6 +306,7 @@ public sealed class CallApiService
 
         await _hubContext.Clients.All.SendAsync("ApiCallCompleted", completionEvent);
         await _logRepository.CreateAsync(log);
+        await UpdateApiCallStatsAsync(log.Success, completedAt);
     }
 
     private async Task RegisterImmediateErrorAsync(Guid apiCallId, string title, DateTime startedAt, string errorMessage)
@@ -339,6 +340,58 @@ public sealed class CallApiService
         var sentryTag = apiCallId.ToString();
         _sentryService.LogException(new Exception(errorMessage), errorMessage, sentryTag);
         await _logRepository.CreateAsync(log);
+        await UpdateApiCallStatsAsync(success: false, log.ExecutedAt);
+    }
+
+    private async Task UpdateApiCallStatsAsync(bool success, DateTime executedAt)
+    {
+        if (_dbContext.Database.IsRelational())
+        {
+            // Use atomic SQL to avoid lost-update races when concurrent API calls complete
+            var successVal = success ? 1 : 0;
+            var errorVal = success ? 0 : 1;
+            await _dbContext.Database.ExecuteSqlRawAsync(@"
+MERGE [ApiCallStats] WITH (HOLDLOCK) AS target
+USING (SELECT 1 AS [PkId]) AS source ON target.[PkId] = source.[PkId]
+WHEN MATCHED THEN
+    UPDATE SET
+        [TotalApiCalls] = target.[TotalApiCalls] + 1,
+        [TotalSuccessfulCalls] = target.[TotalSuccessfulCalls] + {0},
+        [LastSuccessfulCallAt] = CASE WHEN {0} = 1 THEN {2} ELSE target.[LastSuccessfulCallAt] END,
+        [TotalErroredCalls] = target.[TotalErroredCalls] + {1},
+        [LastErroredCallAt] = CASE WHEN {1} = 1 THEN {2} ELSE target.[LastErroredCallAt] END,
+        [FirstApiCallAt] = COALESCE(target.[FirstApiCallAt], {2})
+WHEN NOT MATCHED THEN
+    INSERT ([PkId], [TotalApiCalls], [TotalSuccessfulCalls], [LastSuccessfulCallAt], [TotalErroredCalls], [LastErroredCallAt], [FirstApiCallAt])
+    VALUES (1, 1, {0}, CASE WHEN {0} = 1 THEN {2} END, {1}, CASE WHEN {1} = 1 THEN {2} END, {2});",
+                successVal, errorVal, executedAt);
+            return;
+        }
+
+        // Fallback for non-relational providers (e.g. in-memory database used in tests)
+        var stats = await _dbContext.ApiCallStats.FindAsync(1);
+        if (stats == null)
+        {
+            stats = new ApiCallStats { PkId = 1 };
+            _dbContext.ApiCallStats.Add(stats);
+        }
+
+        stats.TotalApiCalls++;
+
+        if (success)
+        {
+            stats.TotalSuccessfulCalls++;
+            stats.LastSuccessfulCallAt = executedAt;
+        }
+        else
+        {
+            stats.TotalErroredCalls++;
+            stats.LastErroredCallAt = executedAt;
+        }
+
+        stats.FirstApiCallAt ??= executedAt;
+
+        await _dbContext.SaveChangesAsync();
     }
 
     private async Task UnscheduleApiCallAsync(Guid apiCallId)

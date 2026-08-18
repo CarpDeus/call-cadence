@@ -40,19 +40,35 @@ else
         <MudItem xs="12" md="4">
             <MudPaper Class="pa-4" Elevation="3">
                 <MudText Typo="Typo.h6">Successful Calls</MudText>
-                <MudText Typo="Typo.h3">@_successfulCalls.ToString("N0")</MudText>
+                <MudText Typo="Typo.h3">@_successfulCalls.ToString("N0") / @_totalSuccessfulCalls.ToString("N0")</MudText>
+                @if (_lastSuccessfulCallAt.HasValue)
+                {
+                    <MudText Typo="Typo.caption">Last: @_lastSuccessfulCallAt.Value.ToString("u")</MudText>
+                }
             </MudPaper>
         </MudItem>
         <MudItem xs="12" md="4">
             <MudPaper Class="pa-4" Elevation="3">
                 <MudText Typo="Typo.h6">Error Count</MudText>
-                <MudText Typo="Typo.h3">@_errorCount.ToString("N0")</MudText>
+                <MudText Typo="Typo.h3">@_errors.Count.ToString("N0") / @_totalErroredCalls.ToString("N0")</MudText>
+                @if (_lastErroredCallAt.HasValue)
+                {
+                    <MudText Typo="Typo.caption">Last: @_lastErroredCallAt.Value.ToString("u")</MudText>
+                }
             </MudPaper>
         </MudItem>
         <MudItem xs="12" md="4">
             <MudPaper Class="pa-4" Elevation="3">
                 <MudText Typo="Typo.h6">Server Started (UTC)</MudText>
                 <MudText Typo="Typo.body1">@_serverStartedAt.ToString("u")</MudText>
+                @if (_firstApiCallAt.HasValue)
+                {
+                    <MudText Typo="Typo.caption">First API Call: @_firstApiCallAt.Value.ToString("u")</MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption">First API Call: —</MudText>
+                }
             </MudPaper>
         </MudItem>
         <MudItem xs="12">
@@ -163,6 +179,11 @@ else
     private long _successfulCalls;
     private long _errorCount;
     private DateTime _serverStartedAt;
+    private long _totalSuccessfulCalls;
+    private DateTime? _lastSuccessfulCallAt;
+    private long _totalErroredCalls;
+    private DateTime? _lastErroredCallAt;
+    private DateTime? _firstApiCallAt;
     private bool _isReady;
 
     protected override async Task OnInitializedAsync()
@@ -206,6 +227,11 @@ else
             _successfulCalls = state.SuccessfulCalls;
             _errorCount = state.ErrorCount;
             _serverStartedAt = state.ServerStartedAt;
+            _totalSuccessfulCalls = state.TotalSuccessfulCalls;
+            _lastSuccessfulCallAt = state.LastSuccessfulCallAt;
+            _totalErroredCalls = state.TotalErroredCalls;
+            _lastErroredCallAt = state.LastErroredCallAt;
+            _firstApiCallAt = state.FirstApiCallAt;
 
             _recentSuccessfulCalls.Clear();
             _recentSuccessfulCalls.AddRange(state.RecentSuccessfulCalls);
@@ -242,6 +268,8 @@ else
             if (completed.Success)
             {
                 _successfulCalls++;
+                _totalSuccessfulCalls++;
+                _lastSuccessfulCallAt = completed.CompletedAt;
 
                 _recentSuccessfulCalls.Insert(0, new RecentSuccessfulCallDto
                 {
@@ -258,6 +286,8 @@ else
             else if (completed.Error != null)
             {
                 _errorCount++;
+                _totalErroredCalls++;
+                _lastErroredCallAt = completed.CompletedAt;
                 _errors.Insert(0, completed.Error);
             }
 
