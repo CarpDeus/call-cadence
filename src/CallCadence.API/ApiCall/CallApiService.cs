@@ -306,6 +306,7 @@ public sealed class CallApiService
 
         await _hubContext.Clients.All.SendAsync("ApiCallCompleted", completionEvent);
         await _logRepository.CreateAsync(log);
+        await UpdateApiCallStatsAsync(log.Success, completedAt);
     }
 
     private async Task RegisterImmediateErrorAsync(Guid apiCallId, string title, DateTime startedAt, string errorMessage)
@@ -339,6 +340,34 @@ public sealed class CallApiService
         var sentryTag = apiCallId.ToString();
         _sentryService.LogException(new Exception(errorMessage), errorMessage, sentryTag);
         await _logRepository.CreateAsync(log);
+        await UpdateApiCallStatsAsync(success: false, log.ExecutedAt);
+    }
+
+    private async Task UpdateApiCallStatsAsync(bool success, DateTime executedAt)
+    {
+        var stats = await _dbContext.ApiCallStats.FindAsync(1);
+        if (stats == null)
+        {
+            stats = new ApiCallStats { PkId = 1 };
+            _dbContext.ApiCallStats.Add(stats);
+        }
+
+        stats.TotalApiCalls++;
+
+        if (success)
+        {
+            stats.TotalSuccessfulCalls++;
+            stats.LastSuccessfulCallAt = executedAt;
+        }
+        else
+        {
+            stats.TotalErroredCalls++;
+            stats.LastErroredCallAt = executedAt;
+        }
+
+        stats.FirstApiCallAt ??= executedAt;
+
+        await _dbContext.SaveChangesAsync();
     }
 
     private async Task UnscheduleApiCallAsync(Guid apiCallId)

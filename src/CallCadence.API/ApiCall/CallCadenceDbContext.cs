@@ -38,6 +38,7 @@ public sealed class CallCadenceDbContext : IdentityDbContext<AdminUser>, IDataPr
     public DbSet<SsoConfiguration> SsoConfigurations => Set<SsoConfiguration>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
+    public DbSet<ApiCallStats> ApiCallStats => Set<ApiCallStats>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -160,6 +161,19 @@ public sealed class CallCadenceDbContext : IdentityDbContext<AdminUser>, IDataPr
             entity.Property(e => e.PkId).UseIdentityColumn();
             entity.Property(e => e.Value).IsRequired().HasMaxLength(200);
             entity.HasIndex(e => e.Value).IsUnique();
+        });
+
+        modelBuilder.Entity<ApiCallStats>(entity =>
+        {
+            entity.ToTable("ApiCallStats");
+            entity.HasKey(e => e.PkId);
+            entity.Property(e => e.PkId).ValueGeneratedNever();
+            entity.Property(e => e.TotalApiCalls).IsRequired();
+            entity.Property(e => e.TotalSuccessfulCalls).IsRequired();
+            entity.Property(e => e.LastSuccessfulCallAt);
+            entity.Property(e => e.TotalErroredCalls).IsRequired();
+            entity.Property(e => e.LastErroredCallAt);
+            entity.Property(e => e.FirstApiCallAt);
         });
     }
 }

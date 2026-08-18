@@ -14,6 +14,8 @@ public sealed class ApiCallActivityTracker
     private readonly LinkedList<RecentSuccessfulCallDto> _recentSuccessfulCalls = new();
     private long _successfulCalls;
     private long _errorCount;
+    private DateTime? _lastSuccessfulCallAt;
+    private DateTime? _lastErroredCallAt;
 
     public DateTime StartedAt { get; } = DateTime.UtcNow;
 
@@ -48,6 +50,7 @@ public sealed class ApiCallActivityTracker
 
             lock (_recentSuccessLock)
             {
+                _lastSuccessfulCallAt = completedAt;
                 _recentSuccessfulCalls.AddFirst(recentCall);
                 while (_recentSuccessfulCalls.Count > MaxRecentSuccessfulCalls)
                 {
@@ -67,6 +70,11 @@ public sealed class ApiCallActivityTracker
                 ErrorMessage = errorMessage ?? "Unknown error",
                 OccurredAt = completedAt
             };
+
+            lock (_recentSuccessLock)
+            {
+                _lastErroredCallAt = completedAt;
+            }
 
             _errors[dashboardError.Id] = dashboardError;
             _errorOrder.Enqueue(dashboardError.Id);
@@ -92,9 +100,13 @@ public sealed class ApiCallActivityTracker
     public DashboardStateDto GetState()
     {
         List<RecentSuccessfulCallDto> recentSuccessfulCalls;
+        DateTime? lastSuccessfulCallAt;
+        DateTime? lastErroredCallAt;
         lock (_recentSuccessLock)
         {
             recentSuccessfulCalls = [.. _recentSuccessfulCalls];
+            lastSuccessfulCallAt = _lastSuccessfulCallAt;
+            lastErroredCallAt = _lastErroredCallAt;
         }
 
         return new DashboardStateDto

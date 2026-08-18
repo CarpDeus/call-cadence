@@ -597,6 +597,34 @@ namespace CallCadence.API.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
+            modelBuilder.Entity("CallCadence.Domain.ApiCall.ApiCallStats", b =>
+                {
+                    b.Property<int>("PkId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("FirstApiCallAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastErroredCallAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastSuccessfulCallAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long>("TotalApiCalls")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("TotalErroredCalls")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("TotalSuccessfulCalls")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("PkId");
+
+                    b.ToTable("ApiCallStats", (string)null);
+                });
+
 #pragma warning restore 612, 618
         }
     }
