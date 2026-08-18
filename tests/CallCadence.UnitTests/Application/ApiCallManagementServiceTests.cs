@@ -31,7 +31,8 @@ public sealed class ApiCallManagementServiceTests
             Description = "Test Description",
             HttpMethod = "GET",
             EndpointUrl = "https://api.example.com",
-            IsActive = true
+            IsActive = true,
+            LogErrorsToSentry = true
         };
 
         _mockApiCallRepository.Setup(r => r.CreateAsync(It.IsAny<ApiCall>()))
@@ -48,6 +49,7 @@ public sealed class ApiCallManagementServiceTests
         result.HttpMethod.Should().Be(dto.HttpMethod);
         result.EndpointUrl.Should().Be(dto.EndpointUrl);
         result.IsActive.Should().Be(dto.IsActive);
+        result.LogErrorsToSentry.Should().Be(dto.LogErrorsToSentry);
         
         _mockApiCallRepository.Verify(r => r.CreateAsync(It.IsAny<ApiCall>()), Times.Once);
     }
@@ -86,6 +88,7 @@ public sealed class ApiCallManagementServiceTests
             HttpMethod = "GET",
             EndpointUrl = "https://old.example.com",
             IsActive = true,
+            LogErrorsToSentry = true,
             CreatedAt = DateTime.UtcNow.AddDays(-1),
             ModifiedAt = DateTime.UtcNow.AddDays(-1)
         };
@@ -97,7 +100,8 @@ public sealed class ApiCallManagementServiceTests
             Description = "New Description",
             HttpMethod = "POST",
             EndpointUrl = "https://new.example.com",
-            IsActive = false
+            IsActive = false,
+            LogErrorsToSentry = false
         };
 
         _mockApiCallRepository.Setup(r => r.GetByIdAsync(existingApiCall.Id))
@@ -117,6 +121,7 @@ public sealed class ApiCallManagementServiceTests
         result.HttpMethod.Should().Be(updateDto.HttpMethod);
         result.EndpointUrl.Should().Be(updateDto.EndpointUrl);
         result.IsActive.Should().Be(updateDto.IsActive);
+        result.LogErrorsToSentry.Should().Be(updateDto.LogErrorsToSentry);
         
         _mockArchiveRepository.Verify(r => r.CreateAsync(It.IsAny<ApiCallArchive>()), Times.Once);
         _mockApiCallRepository.Verify(r => r.UpdateAsync(It.IsAny<ApiCall>()), Times.Once);
