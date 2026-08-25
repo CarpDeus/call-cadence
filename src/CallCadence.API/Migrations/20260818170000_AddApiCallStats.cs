@@ -30,10 +30,10 @@ BEGIN
     INSERT INTO [ApiCallStats] ([PkId], [TotalApiCalls], [TotalSuccessfulCalls], [LastSuccessfulCallAt], [TotalErroredCalls], [LastErroredCallAt], [FirstApiCallAt])
     SELECT
         1,
-        COUNT(*),
-        SUM(CASE WHEN [Success] = 1 THEN 1 ELSE 0 END),
+        ISNULL(COUNT(*), 0),
+        ISNULL(SUM(CASE WHEN [Success] = 1 THEN 1 ELSE 0 END), 0),
         MAX(CASE WHEN [Success] = 1 THEN [ExecutedAt] END),
-        SUM(CASE WHEN [Success] = 0 THEN 1 ELSE 0 END),
+        ISNULL(SUM(CASE WHEN [Success] = 0 THEN 1 ELSE 0 END), 0),
         MAX(CASE WHEN [Success] = 0 THEN [ExecutedAt] END),
         MIN([ExecutedAt])
     FROM [ApiCallLogs];
