@@ -47,6 +47,29 @@ You can find a sample docker-compose files here:
 | CALLCADENCE_DB | The connection string for the Call Cadence database if you are using a SQL Server outside of the docker stack. |
 | CALLCADENCE_HANGFIRE_DB | The connection string for the Call Cadence hangfire database if you are using a SQL Server outside of the docker stack. |
 
+### Reverse Proxy
+Call Cadence works best with HTTPS and I have it running under [NPM](https://nginxproxymanager.com/).  It does require that websockets  several advanced settings are configured:
+
+#### API 
+```
+proxy_buffer_size   16k;
+proxy_buffers       8 16k;
+proxy_busy_buffers_size 32k;
+
+# harmless but recommended for the OIDC POST + large cookies
+proxy_read_timeout  90s;
+client_max_body_size 16m;
+```
+
+#### UI 
+```
+add_header 'Access-Control-Allow-Origin' '*';
+add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
+add_header 'Access-Control-Allow-Credentials' 'true' always;
+add_header 'Access-Control-Allow-Origin' '$http_origin' always;
+```
 
 ### Database Setup
 
