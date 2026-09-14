@@ -374,7 +374,7 @@ public sealed class CallApiService
 
         var content = new ByteArrayContent(Encoding.UTF8.GetBytes(payload));
         var resolvedContentType = hasExplicitContentType
-            ? explicitContentType
+            ? explicitContentType!
             : MediaTypeHeaderValue.Parse(defaultContentType);
         content.Headers.ContentType = resolvedContentType;
         if (string.IsNullOrWhiteSpace(resolvedContentType.CharSet))
