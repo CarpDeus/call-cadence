@@ -18,7 +18,11 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -159,39 +163,35 @@ var authBuilder = builder.Services.AddAuthentication(options =>
 
 authBuilder.AddIdentityCookies();
 
+// Dedicated cookie scheme used only to authorize the Hangfire Dashboard. The default
+// authenticate/challenge scheme remains JWT bearer; this cookie is issued by the
+// /hangfire/login handshake endpoint after validating a JWT and is scoped to /hangfire.
+authBuilder.AddCookie(HangfireDashboardAuth.CookieScheme, options =>
+{
+    options.Cookie.Name = "CallCadence.Hangfire";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+    options.Cookie.Path = "/hangfire";
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(30);
+    options.SlidingExpiration = true;
+    // The dashboard is not an interactive login surface; deny rather than redirect.
+    options.Events.OnRedirectToLogin = context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return Task.CompletedTask;
+    };
+    options.Events.OnRedirectToAccessDenied = context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return Task.CompletedTask;
+    };
+});
+
 // Add JWT Bearer authentication for cross-domain UI access
 authBuilder.AddJwtBearer(options =>
 {
-    var signingKey = builder.Configuration["Jwt:SigningKey"];
-    if (string.IsNullOrWhiteSpace(signingKey))
-    {
-        throw new InvalidOperationException(
-            "Jwt:SigningKey configuration is required. " +
-            "Set the Jwt__SigningKey environment variable or add Jwt:SigningKey to appsettings.json.");
-    }
-
-    var issuer = builder.Configuration["Jwt:Issuer"];
-    if (string.IsNullOrWhiteSpace(issuer))
-    {
-        throw new InvalidOperationException("Jwt:Issuer configuration is required.");
-    }
-
-    var audience = builder.Configuration["Jwt:Audience"];
-    if (string.IsNullOrWhiteSpace(audience))
-    {
-        throw new InvalidOperationException("Jwt:Audience configuration is required.");
-    }
-
-    options.TokenValidationParameters = new TokenValidationParameters
-    {
-        ValidateIssuer = true,
-        ValidateAudience = true,
-        ValidateLifetime = true,
-        ValidateIssuerSigningKey = true,
-        ValidIssuer = issuer,
-        ValidAudience = audience,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey))
-    };
+    options.TokenValidationParameters = HangfireDashboardAuth.BuildTokenValidationParameters(builder.Configuration);
 
     // Allow SignalR to read bearer token from query string
     options.Events = new JwtBearerEvents
@@ -379,6 +379,75 @@ if (!app.Environment.IsEnvironment("Testing"))
 {
     _ = app.Services.GetRequiredService<SentrySdkInitializer>();
 }
+
+// Hangfire Dashboard handshake endpoint. The Blazor UI opens this in a new tab with the
+// current user's JWT on the query string. We validate the token, confirm the Admin role,
+// then issue a short-lived cookie (scoped to /hangfire) and redirect to the dashboard.
+// The endpoint is intentionally anonymous because it performs its own token validation.
+// It must live OUTSIDE the "/hangfire" segment: the Hangfire dashboard middleware claims
+// the entire /hangfire prefix, so a nested /hangfire/login would be swallowed by the
+// dashboard and never reach this endpoint.
+app.MapGet("/hangfire-login", async (HttpContext context) =>
+{
+    var accessToken = context.Request.Query["access_token"].ToString();
+    if (string.IsNullOrWhiteSpace(accessToken))
+    {
+        return Results.Unauthorized();
+    }
+
+    var tokenHandler = new JwtSecurityTokenHandler();
+    ClaimsPrincipal principal;
+    try
+    {
+        principal = tokenHandler.ValidateToken(
+            accessToken,
+            HangfireDashboardAuth.BuildTokenValidationParameters(app.Configuration),
+            out _);
+    }
+    catch (Exception)
+    {
+        return Results.Unauthorized();
+    }
+
+    if (!principal.IsInRole(ApplicationRoles.Admin))
+    {
+        return Results.Forbid();
+    }
+
+    var name = principal.Identity?.Name
+        ?? principal.FindFirst(ClaimTypes.Email)?.Value
+        ?? "hangfire-admin";
+
+    var identity = new ClaimsIdentity(HangfireDashboardAuth.CookieScheme);
+    identity.AddClaim(new Claim(ClaimTypes.Name, name));
+    identity.AddClaim(new Claim(ClaimTypes.Role, ApplicationRoles.Admin));
+
+    await context.SignInAsync(
+        HangfireDashboardAuth.CookieScheme,
+        new ClaimsPrincipal(identity));
+
+    // Redirect only to the fixed local dashboard path to avoid open-redirect.
+    return Results.LocalRedirect("/hangfire");
+}).AllowAnonymous().DisableRateLimiting();
+
+// Populate HttpContext.User for dashboard requests from the dedicated Hangfire cookie.
+// The default authenticate scheme is JWT bearer, which won't run for a full-page browser
+// navigation, so authenticate the cookie explicitly for /hangfire* requests. This lets the
+// existing HangfireAuthorizationFilter authorize based on the populated principal.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/hangfire")
+        && context.User?.Identity?.IsAuthenticated != true)
+    {
+        var result = await context.AuthenticateAsync(HangfireDashboardAuth.CookieScheme);
+        if (result.Succeeded && result.Principal is not null)
+        {
+            context.User = result.Principal;
+        }
+    }
+
+    await next();
+});
 
 // Configure Hangfire Dashboard
 app.UseHangfireDashboard("/hangfire", new DashboardOptions
