@@ -361,7 +361,7 @@ public sealed class CallApiService
         }
 
         return payload
-            .Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Split('&', StringSplitOptions.TrimEntries)
             .Select(part =>
             {
                 var separatorIndex = part.IndexOf('=');

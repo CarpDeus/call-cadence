@@ -210,7 +210,7 @@ public sealed class ApiCallManagementService
     private static int? NormalizeBodyEncoding(string? payload, int? bodyEncoding)
     {
         return string.IsNullOrWhiteSpace(payload)
-            ? bodyEncoding
+            ? null
             : bodyEncoding ?? ApiBodyEncoding.Json;
     }
 

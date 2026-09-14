@@ -202,6 +202,46 @@ public sealed class CallApiServiceTests
         (await capturedRequest.Content.ReadAsStringAsync()).Should().Be("message=hello+world&path=a%2Fb");
     }
 
+    [Test]
+    public async Task TestApiCallAsync_ShouldPreserveEmptyFormSegments()
+    {
+        var capturedRequest = default(HttpRequestMessage);
+        var handler = new TestHttpMessageHandler(request =>
+        {
+            capturedRequest = request;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"ok\":true}")
+            };
+        });
+
+        var httpClient = new HttpClient(handler);
+        var mockHttpClientFactory = new Mock<IHttpClientFactory>();
+        mockHttpClientFactory.Setup(f => f.CreateClient(It.IsAny<string>()))
+            .Returns(httpClient);
+
+        var service = new CallApiService(
+            new Mock<IApiCallRepository>().Object,
+            new Mock<IApiCallLogRepository>().Object,
+            mockHttpClientFactory.Object,
+            new Mock<ISentryService>().Object,
+            new ApiCallActivityTracker(),
+            CreateHubContextMock().Object,
+            CreateDbContext(),
+            new Mock<IRecurringJobManager>().Object);
+
+        await service.TestApiCallAsync(new TestApiCallRequest
+        {
+            HttpMethod = "POST",
+            EndpointUrl = "https://example.com/api",
+            Payload = "a=1&&b=2&",
+            BodyEncoding = ApiBodyEncoding.FormUrlEncoded
+        });
+
+        capturedRequest.Should().NotBeNull();
+        (await capturedRequest!.Content!.ReadAsStringAsync()).Should().Be("a=1&=&b=2&=");
+    }
+
 
     private static Mock<IHubContext<GenericHub>> CreateHubContextMock()
     {

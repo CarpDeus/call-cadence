@@ -208,6 +208,46 @@ public sealed class ApiCallManagementServiceTests
     }
 
     [Test]
+    public async Task UpdateAsync_ShouldClearBodyEncoding_WhenPayloadIsRemoved()
+    {
+        var existingApiCall = new ApiCall
+        {
+            Id = Guid.NewGuid(),
+            Title = "Old Title",
+            HttpMethod = "POST",
+            EndpointUrl = "https://old.example.com",
+            Payload = "{\"ok\":true}",
+            BodyEncoding = ApiBodyEncoding.Json,
+            CreatedAt = DateTime.UtcNow.AddDays(-1),
+            ModifiedAt = DateTime.UtcNow.AddDays(-1)
+        };
+
+        var updateDto = new UpdateApiCallDto
+        {
+            Id = existingApiCall.Id,
+            Title = "New Title",
+            HttpMethod = "POST",
+            EndpointUrl = "https://new.example.com",
+            Payload = null,
+            BodyEncoding = ApiBodyEncoding.Xml
+        };
+
+        _mockApiCallRepository.Setup(r => r.GetByIdAsync(existingApiCall.Id))
+            .ReturnsAsync(existingApiCall);
+        _mockApiCallRepository.Setup(r => r.UpdateAsync(It.IsAny<ApiCall>()))
+            .ReturnsAsync((ApiCall ac) => ac);
+        _mockArchiveRepository.Setup(r => r.CreateAsync(It.IsAny<ApiCallArchive>()))
+            .ReturnsAsync((ApiCallArchive a) => a);
+
+        var result = await _service.UpdateAsync(updateDto);
+
+        result.BodyEncoding.Should().BeNull();
+        _mockApiCallRepository.Verify(
+            r => r.UpdateAsync(It.Is<ApiCall>(ac => ac.BodyEncoding == null)),
+            Times.Once);
+    }
+
+    [Test]
     public async Task UpdateAsync_ShouldThrowArgumentException_WhenParameterNameContainsMacroIdentifier()
     {
         // Arrange
