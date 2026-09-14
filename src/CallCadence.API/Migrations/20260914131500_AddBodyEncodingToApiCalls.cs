@@ -96,9 +96,6 @@ namespace CallCadence.API.Migrations
                 name: "FK_ApiCalls_BodyEncodings_BodyEncoding",
                 table: "ApiCalls");
 
-            migrationBuilder.DropTable(
-                name: "BodyEncodings");
-
             migrationBuilder.DropIndex(
                 name: "IX_ApiCalls_BodyEncoding",
                 table: "ApiCalls");
@@ -114,6 +111,9 @@ namespace CallCadence.API.Migrations
             migrationBuilder.DropColumn(
                 name: "BodyEncoding",
                 table: "ApiCallArchives");
+
+            migrationBuilder.DropTable(
+                name: "BodyEncodings");
         }
     }
 }

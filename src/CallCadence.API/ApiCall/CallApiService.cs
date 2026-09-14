@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Net.Http.Headers;
+using System.Text;
 using BugLogger.Interfaces;
 using CallCadence.API.Dashboard;
 using CallCadence.API.Hubs;
@@ -334,13 +336,51 @@ public sealed class CallApiService
         await _hubContext.Clients.All.SendAsync("ApiCallCompleted", completionEvent);
     }
 
-    private static StringContent CreateBodyContent(string payload, int? bodyEncoding)
+    private static HttpContent CreateBodyContent(string payload, int? bodyEncoding)
     {
         var effectiveBodyEncoding = bodyEncoding ?? ApiBodyEncoding.Json;
-        return new StringContent(
-            payload,
-            System.Text.Encoding.UTF8,
-            ApiBodyEncoding.GetContentType(effectiveBodyEncoding));
+
+        if (effectiveBodyEncoding == ApiBodyEncoding.FormUrlEncoded)
+        {
+            return new FormUrlEncodedContent(ParseFormUrlEncodedPayload(payload));
+        }
+
+        var content = new ByteArrayContent(Encoding.UTF8.GetBytes(payload));
+        content.Headers.ContentType = new MediaTypeHeaderValue(ApiBodyEncoding.GetContentType(effectiveBodyEncoding))
+        {
+            CharSet = Encoding.UTF8.WebName
+        };
+        return content;
+    }
+
+    private static IEnumerable<KeyValuePair<string, string>> ParseFormUrlEncodedPayload(string payload)
+    {
+        if (string.IsNullOrEmpty(payload))
+        {
+            return [];
+        }
+
+        return payload
+            .Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(part =>
+            {
+                var separatorIndex = part.IndexOf('=');
+                if (separatorIndex < 0)
+                {
+                    return new KeyValuePair<string, string>(DecodeFormUrlEncodedValue(part), string.Empty);
+                }
+
+                var key = part[..separatorIndex];
+                var value = part[(separatorIndex + 1)..];
+                return new KeyValuePair<string, string>(
+                    DecodeFormUrlEncodedValue(key),
+                    DecodeFormUrlEncodedValue(value));
+            });
+    }
+
+    private static string DecodeFormUrlEncodedValue(string value)
+    {
+        return Uri.UnescapeDataString(value.Replace("+", " ", StringComparison.Ordinal));
     }
 
     private async Task LogErrorAsync(Guid apiCallId, string errorMessage, bool logErrorsToSentry, Exception? exception = null)

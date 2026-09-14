@@ -35,6 +35,7 @@
                 <MudTextField Label="Endpoint URL" @bind-Value="_model.EndpointUrl" Required="true" />
                 <MudTextField Label="Payload" @bind-Value="_model.Payload" Lines="5" />
                 <MudSelect T="int?" Label="Body Encoding" @bind-Value="_model.BodyEncoding" Clearable="true"
+                           Disabled="@string.IsNullOrWhiteSpace(_model.Payload)"
                            HelperText="Defaults to JSON whenever a payload is provided.">
                     @foreach (var bodyEncoding in ApiBodyEncoding.All)
                     {
