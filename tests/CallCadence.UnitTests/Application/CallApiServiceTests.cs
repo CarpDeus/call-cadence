@@ -161,6 +161,51 @@ public sealed class CallApiServiceTests
     }
 
     [Test]
+    public async Task TestApiCallAsync_ShouldUseExplicitContentTypeHeaderForRequestBody()
+    {
+        var capturedRequest = default(HttpRequestMessage);
+        var handler = new TestHttpMessageHandler(request =>
+        {
+            capturedRequest = request;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"ok\":true}")
+            };
+        });
+
+        var httpClient = new HttpClient(handler);
+        var mockHttpClientFactory = new Mock<IHttpClientFactory>();
+        mockHttpClientFactory.Setup(f => f.CreateClient(It.IsAny<string>()))
+            .Returns(httpClient);
+
+        var service = new CallApiService(
+            new Mock<IApiCallRepository>().Object,
+            new Mock<IApiCallLogRepository>().Object,
+            mockHttpClientFactory.Object,
+            new Mock<ISentryService>().Object,
+            new ApiCallActivityTracker(),
+            CreateHubContextMock().Object,
+            CreateDbContext(),
+            new Mock<IRecurringJobManager>().Object);
+
+        await service.TestApiCallAsync(new TestApiCallRequest
+        {
+            HttpMethod = "POST",
+            EndpointUrl = "https://example.com/api",
+            Payload = "{\"test\":true}",
+            BodyEncoding = ApiBodyEncoding.Xml,
+            Headers =
+            [
+                new NamedValue { Name = "Content-Type", Value = "application/merge-patch+json" }
+            ]
+        });
+
+        capturedRequest.Should().NotBeNull();
+        capturedRequest!.Content.Should().NotBeNull();
+        capturedRequest.Content!.Headers.ContentType!.MediaType.Should().Be("application/merge-patch+json");
+    }
+
+    [Test]
     public async Task TestApiCallAsync_ShouldSerializeFormUrlEncodedPayload()
     {
         var capturedRequest = default(HttpRequestMessage);
@@ -240,6 +285,66 @@ public sealed class CallApiServiceTests
 
         capturedRequest.Should().NotBeNull();
         (await capturedRequest!.Content!.ReadAsStringAsync()).Should().Be("a=1&=&b=2&=");
+    }
+
+    [Test]
+    public async Task ExecuteApiCallAsync_ShouldUseExplicitContentTypeHeaderForRequestBody()
+    {
+        var apiCallId = Guid.NewGuid();
+        var capturedRequest = default(HttpRequestMessage);
+        var handler = new TestHttpMessageHandler(request =>
+        {
+            capturedRequest = request;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"ok\":true}")
+            };
+        });
+
+        var httpClient = new HttpClient(handler);
+        var apiCall = new ApiCall
+        {
+            Id = apiCallId,
+            Title = "Test",
+            Description = "Test",
+            HttpMethod = "POST",
+            EndpointUrl = "https://example.com/api",
+            IsActive = true,
+            Payload = "{\"test\":true}",
+            BodyEncoding = ApiBodyEncoding.Xml,
+            Headers =
+            [
+                new NamedValue { Name = "Content-Type", Value = "application/merge-patch+json" }
+            ]
+        };
+
+        var mockApiCallRepository = new Mock<IApiCallRepository>();
+        mockApiCallRepository.Setup(r => r.GetByIdAsync(apiCallId))
+            .ReturnsAsync(apiCall);
+
+        var mockLogRepository = new Mock<IApiCallLogRepository>();
+        mockLogRepository.Setup(r => r.CreateAsync(It.IsAny<ApiCallLog>()))
+            .ReturnsAsync((ApiCallLog log) => log);
+
+        var mockHttpClientFactory = new Mock<IHttpClientFactory>();
+        mockHttpClientFactory.Setup(f => f.CreateClient(It.IsAny<string>()))
+            .Returns(httpClient);
+
+        var service = new CallApiService(
+            mockApiCallRepository.Object,
+            mockLogRepository.Object,
+            mockHttpClientFactory.Object,
+            new Mock<ISentryService>().Object,
+            new ApiCallActivityTracker(),
+            CreateHubContextMock().Object,
+            CreateDbContext(),
+            new Mock<IRecurringJobManager>().Object);
+
+        await service.ExecuteApiCallAsync(apiCallId, Guid.NewGuid());
+
+        capturedRequest.Should().NotBeNull();
+        capturedRequest!.Content.Should().NotBeNull();
+        capturedRequest.Content!.Headers.ContentType!.MediaType.Should().Be("application/merge-patch+json");
     }
 
 
