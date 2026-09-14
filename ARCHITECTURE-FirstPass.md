@@ -79,6 +79,31 @@ The dashboard provides real-time monitoring of:
 - Job execution history
 - Failed jobs and retries
 
+#### Admin access from the Blazor UI
+
+The dashboard is restricted to authenticated administrators via `HangfireAuthorizationFilter`.
+Because the Blazor UI (`CallCadence.UI`) authenticates against the API with a JWT held in the
+Blazor circuit, a full-page browser navigation to `/hangfire` would not carry that token. To
+bridge this, the UI's nav menu shows an admin-only **"Hangfire Dashboard"** link that opens a
+new tab to the API's handshake endpoint:
+
+```
+{Api:BaseUrl}/hangfire/login?access_token={jwt}
+```
+
+The `GET /hangfire/login` endpoint validates the JWT (same issuer/audience/signing key as the
+JWT bearer scheme), confirms the `Admin` role, then issues a short-lived, HttpOnly cookie
+(the dedicated `Hangfire` cookie scheme, scoped to `/hangfire`, 30-minute sliding expiry) and
+redirects to `/hangfire`. A path-scoped middleware authenticates that cookie for `/hangfire*`
+requests and populates `HttpContext.User`, so the existing `HangfireAuthorizationFilter`
+authorizes the request unchanged.
+
+> Security note: the JWT appears once in the handshake URL (browser history and API request
+> logs). Tokens are short-lived (`Jwt:ExpiryMinutes`), and the dashboard itself runs on the
+> HttpOnly cookie. The handshake redirects only to the fixed local `/hangfire` path to prevent
+> open redirects.
+
+
 ## API Endpoints
 
 ### Base URL
