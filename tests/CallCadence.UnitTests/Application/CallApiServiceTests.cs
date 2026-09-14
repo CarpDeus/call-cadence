@@ -203,6 +203,7 @@ public sealed class CallApiServiceTests
         capturedRequest.Should().NotBeNull();
         capturedRequest!.Content.Should().NotBeNull();
         capturedRequest.Content!.Headers.ContentType!.MediaType.Should().Be("application/merge-patch+json");
+        capturedRequest.Content.Headers.ContentType!.CharSet.Should().Be("utf-8");
     }
 
     [Test]
@@ -345,6 +346,7 @@ public sealed class CallApiServiceTests
         capturedRequest.Should().NotBeNull();
         capturedRequest!.Content.Should().NotBeNull();
         capturedRequest.Content!.Headers.ContentType!.MediaType.Should().Be("application/merge-patch+json");
+        capturedRequest.Content.Headers.ContentType!.CharSet.Should().Be("utf-8");
     }
 
 

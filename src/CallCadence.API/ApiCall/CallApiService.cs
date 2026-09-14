@@ -374,7 +374,7 @@ public sealed class CallApiService
 
         var content = new ByteArrayContent(Encoding.UTF8.GetBytes(payload));
         content.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
-        if (string.IsNullOrWhiteSpace(contentTypeHeaderValue))
+        if (string.IsNullOrWhiteSpace(content.Headers.ContentType.CharSet))
         {
             content.Headers.ContentType.CharSet = Encoding.UTF8.WebName;
         }
