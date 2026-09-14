@@ -103,6 +103,7 @@ public sealed class CallApiServiceTests
         var payload = await capturedRequest.Content!.ReadAsStringAsync();
         payload.Should().Contain($"\"year\":\"{now.ToString("yyyy", CultureInfo.InvariantCulture)}\"");
         payload.Should().Contain("\"unknown\":\"@@NotSupported@@\"");
+        capturedRequest.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
 
         capturedLog.Should().NotBeNull();
         capturedLog!.RequestUri.Should().NotBeNull();
@@ -115,6 +116,47 @@ public sealed class CallApiServiceTests
         capturedLog.RequestBody.Should().Contain($"\"year\":\"{now.ToString("yyyy", CultureInfo.InvariantCulture)}\"");
 
         mockLogRepository.Verify(r => r.CreateAsync(It.Is<ApiCallLog>(l => l.Success)), Times.Once);
+    }
+
+    [Test]
+    public async Task TestApiCallAsync_ShouldUseSpecifiedXmlContentType()
+    {
+        var capturedRequest = default(HttpRequestMessage);
+        var handler = new TestHttpMessageHandler(request =>
+        {
+            capturedRequest = request;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("<ok />")
+            };
+        });
+
+        var httpClient = new HttpClient(handler);
+        var mockHttpClientFactory = new Mock<IHttpClientFactory>();
+        mockHttpClientFactory.Setup(f => f.CreateClient(It.IsAny<string>()))
+            .Returns(httpClient);
+
+        var service = new CallApiService(
+            new Mock<IApiCallRepository>().Object,
+            new Mock<IApiCallLogRepository>().Object,
+            mockHttpClientFactory.Object,
+            new Mock<ISentryService>().Object,
+            new ApiCallActivityTracker(),
+            CreateHubContextMock().Object,
+            CreateDbContext(),
+            new Mock<IRecurringJobManager>().Object);
+
+        await service.TestApiCallAsync(new TestApiCallRequest
+        {
+            HttpMethod = "POST",
+            EndpointUrl = "https://example.com/api",
+            Payload = "<request />",
+            BodyEncoding = ApiBodyEncoding.Xml
+        });
+
+        capturedRequest.Should().NotBeNull();
+        capturedRequest!.Content.Should().NotBeNull();
+        capturedRequest.Content!.Headers.ContentType!.MediaType.Should().Be("application/xml");
     }
 
 

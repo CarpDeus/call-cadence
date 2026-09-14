@@ -260,6 +260,25 @@ public sealed class ApiCallManagementControllerTests
     }
 
     [Test]
+    public async Task Create_ShouldDefaultBodyEncodingToJson_WhenPayloadProvided()
+    {
+        var createDto = new CreateApiCallDto
+        {
+            Title = "Payload API",
+            HttpMethod = "POST",
+            EndpointUrl = "https://api.example.com/test",
+            Payload = "{\"ok\":true}"
+        };
+
+        var response = await _client.PostAsJsonAsync("/api/ApiCallManagement", createDto);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await response.Content.ReadFromJsonAsync<ApiCallDto>();
+        created.Should().NotBeNull();
+        created!.BodyEncoding.Should().Be(ApiBodyEncoding.Json);
+    }
+
+    [Test]
     public async Task GetById_ShouldReturnApiCall_WhenExists()
     {
         // Arrange - Create an API call first
