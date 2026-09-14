@@ -289,6 +289,51 @@ public sealed class CallApiServiceTests
     }
 
     [Test]
+    public async Task TestApiCallAsync_ShouldIgnoreMismatchedContentTypeHeaderForFormUrlEncodedPayload()
+    {
+        var capturedRequest = default(HttpRequestMessage);
+        var handler = new TestHttpMessageHandler(request =>
+        {
+            capturedRequest = request;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"ok\":true}")
+            };
+        });
+
+        var httpClient = new HttpClient(handler);
+        var mockHttpClientFactory = new Mock<IHttpClientFactory>();
+        mockHttpClientFactory.Setup(f => f.CreateClient(It.IsAny<string>()))
+            .Returns(httpClient);
+
+        var service = new CallApiService(
+            new Mock<IApiCallRepository>().Object,
+            new Mock<IApiCallLogRepository>().Object,
+            mockHttpClientFactory.Object,
+            new Mock<ISentryService>().Object,
+            new ApiCallActivityTracker(),
+            CreateHubContextMock().Object,
+            CreateDbContext(),
+            new Mock<IRecurringJobManager>().Object);
+
+        await service.TestApiCallAsync(new TestApiCallRequest
+        {
+            HttpMethod = "POST",
+            EndpointUrl = "https://example.com/api",
+            Payload = "message=hello world",
+            BodyEncoding = ApiBodyEncoding.FormUrlEncoded,
+            Headers =
+            [
+                new NamedValue { Name = "Content-Type", Value = "application/json" }
+            ]
+        });
+
+        capturedRequest.Should().NotBeNull();
+        capturedRequest!.Content.Should().NotBeNull();
+        capturedRequest.Content!.Headers.ContentType!.MediaType.Should().Be("application/x-www-form-urlencoded");
+    }
+
+    [Test]
     public async Task ExecuteApiCallAsync_ShouldUseExplicitContentTypeHeaderForRequestBody()
     {
         var apiCallId = Guid.NewGuid();

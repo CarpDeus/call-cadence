@@ -357,26 +357,29 @@ public sealed class CallApiService
     private static HttpContent CreateBodyContent(string payload, int? bodyEncoding, string? contentTypeHeaderValue = null)
     {
         var effectiveBodyEncoding = bodyEncoding ?? ApiBodyEncoding.Json;
-        var contentType = string.IsNullOrWhiteSpace(contentTypeHeaderValue)
-            ? ApiBodyEncoding.GetContentType(effectiveBodyEncoding)
-            : contentTypeHeaderValue;
+        var defaultContentType = ApiBodyEncoding.GetContentType(effectiveBodyEncoding);
+        var hasExplicitContentType = MediaTypeHeaderValue.TryParse(contentTypeHeaderValue, out var explicitContentType);
 
         if (effectiveBodyEncoding == ApiBodyEncoding.FormUrlEncoded)
         {
             var formContent = new FormUrlEncodedContent(ParseFormUrlEncodedPayload(payload));
-            if (!string.IsNullOrWhiteSpace(contentTypeHeaderValue))
+            if (hasExplicitContentType &&
+                string.Equals(explicitContentType!.MediaType, ApiBodyEncoding.GetContentType(ApiBodyEncoding.FormUrlEncoded), StringComparison.OrdinalIgnoreCase))
             {
-                formContent.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
+                formContent.Headers.ContentType = explicitContentType;
             }
 
             return formContent;
         }
 
         var content = new ByteArrayContent(Encoding.UTF8.GetBytes(payload));
-        content.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
-        if (string.IsNullOrWhiteSpace(content.Headers.ContentType.CharSet))
+        var resolvedContentType = hasExplicitContentType
+            ? explicitContentType
+            : MediaTypeHeaderValue.Parse(defaultContentType);
+        content.Headers.ContentType = resolvedContentType;
+        if (string.IsNullOrWhiteSpace(resolvedContentType.CharSet))
         {
-            content.Headers.ContentType.CharSet = Encoding.UTF8.WebName;
+            resolvedContentType.CharSet = Encoding.UTF8.WebName;
         }
 
         return content;
