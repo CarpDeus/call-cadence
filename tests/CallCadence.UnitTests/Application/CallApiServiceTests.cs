@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using BugLogger.Interfaces;
+using CallCadence.Application.ApiCall;
 using CallCadence.API.Dashboard;
 using CallCadence.API.Hubs;
 using CallCadence.Domain.ApiCall;
