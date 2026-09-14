@@ -16,5 +16,6 @@ public sealed class CreateApiCallDto
     public List<NamedValue> Parameters { get; set; } = [];
     public bool IsActive { get; set; } = true;
     public bool LogErrorsToSentry { get; set; }
+    public int? BodyEncoding { get; set; }
     public int? ExpectedStatusCode { get; set; }
 }

@@ -21,6 +21,8 @@ public sealed class ApiCallManagementService
     public async Task<ApiCallDto> CreateAsync(CreateApiCallDto dto)
     {
         ValidateNoMacrosInNames(dto.Headers, dto.Parameters);
+        ValidateBodyEncoding(dto.BodyEncoding);
+        var bodyEncoding = NormalizeBodyEncoding(dto.Payload, dto.BodyEncoding);
 
         var apiCall = new Domain.ApiCall.ApiCall
         {
@@ -34,6 +36,7 @@ public sealed class ApiCallManagementService
             Parameters = dto.Parameters,
             IsActive = dto.IsActive,
             LogErrorsToSentry = dto.LogErrorsToSentry,
+            BodyEncoding = bodyEncoding,
             ExpectedStatusCode = dto.ExpectedStatusCode,
             CreatedAt = DateTime.UtcNow,
             ModifiedAt = DateTime.UtcNow
@@ -57,6 +60,8 @@ public sealed class ApiCallManagementService
     public async Task<ApiCallDto> UpdateAsync(UpdateApiCallDto dto)
     {
         ValidateNoMacrosInNames(dto.Headers, dto.Parameters);
+        ValidateBodyEncoding(dto.BodyEncoding);
+        var bodyEncoding = NormalizeBodyEncoding(dto.Payload, dto.BodyEncoding);
 
         var existing = await _apiCallRepository.GetByIdAsync(dto.Id);
         if (existing == null)
@@ -78,6 +83,7 @@ public sealed class ApiCallManagementService
             Parameters = existing.Parameters,
             IsActive = existing.IsActive,
             LogErrorsToSentry = existing.LogErrorsToSentry,
+            BodyEncoding = existing.BodyEncoding,
             ExpectedStatusCode = existing.ExpectedStatusCode,
             ArchivedAt = DateTime.UtcNow,
             OriginalCreatedAt = existing.CreatedAt,
@@ -95,6 +101,7 @@ public sealed class ApiCallManagementService
         existing.Parameters = dto.Parameters;
         existing.IsActive = dto.IsActive;
         existing.LogErrorsToSentry = dto.LogErrorsToSentry;
+        existing.BodyEncoding = bodyEncoding;
         existing.ExpectedStatusCode = dto.ExpectedStatusCode;
         existing.ModifiedAt = DateTime.UtcNow;
 
@@ -193,10 +200,26 @@ public sealed class ApiCallManagementService
             Parameters = apiCall.Parameters,
             IsActive = apiCall.IsActive,
             LogErrorsToSentry = apiCall.LogErrorsToSentry,
+            BodyEncoding = apiCall.BodyEncoding,
             ExpectedStatusCode = apiCall.ExpectedStatusCode,
             CreatedAt = apiCall.CreatedAt,
             ModifiedAt = apiCall.ModifiedAt
         };
+    }
+
+    private static int? NormalizeBodyEncoding(string? payload, int? bodyEncoding)
+    {
+        return string.IsNullOrWhiteSpace(payload)
+            ? null
+            : bodyEncoding ?? ApiBodyEncoding.Json;
+    }
+
+    private static void ValidateBodyEncoding(int? bodyEncoding)
+    {
+        if (!ApiBodyEncoding.IsSupported(bodyEncoding))
+        {
+            throw new ArgumentException("Body encoding is invalid.");
+        }
     }
 
     private static void ValidateNoMacrosInNames(IEnumerable<NamedValue> headers, IEnumerable<NamedValue> parameters)

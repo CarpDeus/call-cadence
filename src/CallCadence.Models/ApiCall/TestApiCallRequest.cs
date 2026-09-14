@@ -12,5 +12,6 @@ public sealed class TestApiCallRequest
     public string? Payload { get; set; }
     public List<NamedValue> Headers { get; set; } = [];
     public List<NamedValue> Parameters { get; set; } = [];
+    public int? BodyEncoding { get; set; }
     public int? ExpectedStatusCode { get; set; }
 }

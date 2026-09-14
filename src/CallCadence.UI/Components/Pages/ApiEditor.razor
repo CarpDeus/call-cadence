@@ -34,6 +34,14 @@
                 </MudSelect>
                 <MudTextField Label="Endpoint URL" @bind-Value="_model.EndpointUrl" Required="true" />
                 <MudTextField Label="Payload" @bind-Value="_model.Payload" Lines="5" />
+                <MudSelect T="int?" Label="Body Encoding" @bind-Value="_model.BodyEncoding" Clearable="true"
+                           Disabled="@string.IsNullOrWhiteSpace(_model.Payload)"
+                           HelperText="Defaults to JSON whenever a payload is provided.">
+                    @foreach (var bodyEncoding in ApiBodyEncoding.All)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)bodyEncoding.Value)">@bodyEncoding.Name</MudSelectItem>
+                    }
+                </MudSelect>
 
                 <MudSelect T="int?" Label="Expected Status Code" @bind-Value="_model.ExpectedStatusCode" Clearable="true"
                            HelperText="Optional: treat this status code as success even if normally an error">
@@ -552,6 +560,7 @@
                     Payload = apiCall.Payload,
                     IsActive = apiCall.IsActive,
                     LogErrorsToSentry = apiCall.LogErrorsToSentry,
+                    BodyEncoding = apiCall.BodyEncoding,
                     ExpectedStatusCode = apiCall.ExpectedStatusCode,
                     Headers = apiCall.Headers,
                     Parameters = apiCall.Parameters
@@ -609,6 +618,7 @@
                     Payload = _model.Payload,
                     IsActive = _model.IsActive,
                     LogErrorsToSentry = _model.LogErrorsToSentry,
+                    BodyEncoding = _model.BodyEncoding,
                     ExpectedStatusCode = _model.ExpectedStatusCode,
                     Headers = _model.Headers,
                     Parameters = _model.Parameters
@@ -625,6 +635,7 @@
                     Payload = _model.Payload,
                     IsActive = _model.IsActive,
                     LogErrorsToSentry = _model.LogErrorsToSentry,
+                    BodyEncoding = _model.BodyEncoding,
                     ExpectedStatusCode = _model.ExpectedStatusCode,
                     Headers = _model.Headers,
                     Parameters = _model.Parameters
@@ -674,6 +685,7 @@
                 HttpMethod = _model.HttpMethod,
                 EndpointUrl = _model.EndpointUrl,
                 Payload = _model.Payload,
+                BodyEncoding = _model.BodyEncoding,
                 ExpectedStatusCode = _model.ExpectedStatusCode,
                 Headers = _model.Headers,
                 Parameters = _model.Parameters
@@ -1023,6 +1035,7 @@
         public string? Payload { get; set; }
         public bool IsActive { get; set; } = true;
         public bool LogErrorsToSentry { get; set; } = false;
+        public int? BodyEncoding { get; set; }
         public int? ExpectedStatusCode { get; set; }
         public List<CallCadence.Domain.ApiCall.NamedValue> Headers { get; set; } = [];
         public List<CallCadence.Domain.ApiCall.NamedValue> Parameters { get; set; } = [];

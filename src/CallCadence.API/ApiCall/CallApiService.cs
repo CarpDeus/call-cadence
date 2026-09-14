@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Net.Http.Headers;
+using System.Text;
 using BugLogger.Interfaces;
 using CallCadence.API.Dashboard;
 using CallCadence.API.Hubs;
@@ -166,10 +168,7 @@ public sealed class CallApiService
                  request.HttpMethod.Equals("PATCH", StringComparison.OrdinalIgnoreCase)))
             {
                 processedPayload = MacroSubstitutionProcessor.Process(request.Payload);
-                httpRequest.Content = new StringContent(
-                    processedPayload,
-                    System.Text.Encoding.UTF8,
-                    "application/json");
+                httpRequest.Content = CreateBodyContent(processedPayload, request.BodyEncoding);
             }
 
             response.RequestUri = endpointUrl;
@@ -269,10 +268,7 @@ public sealed class CallApiService
                      apiCall.HttpMethod.Equals("PATCH", StringComparison.OrdinalIgnoreCase)))
                 {
                     processedPayload = MacroSubstitutionProcessor.Process(apiCall.Payload);
-                    request.Content = new StringContent(
-                        processedPayload,
-                        System.Text.Encoding.UTF8,
-                        "application/json");
+                    request.Content = CreateBodyContent(processedPayload, apiCall.BodyEncoding);
                 }
 
                 log.RequestUri = endpointUrl;
@@ -338,6 +334,53 @@ public sealed class CallApiService
             errorMessage);
 
         await _hubContext.Clients.All.SendAsync("ApiCallCompleted", completionEvent);
+    }
+
+    private static HttpContent CreateBodyContent(string payload, int? bodyEncoding)
+    {
+        var effectiveBodyEncoding = bodyEncoding ?? ApiBodyEncoding.Json;
+
+        if (effectiveBodyEncoding == ApiBodyEncoding.FormUrlEncoded)
+        {
+            return new FormUrlEncodedContent(ParseFormUrlEncodedPayload(payload));
+        }
+
+        var content = new ByteArrayContent(Encoding.UTF8.GetBytes(payload));
+        content.Headers.ContentType = new MediaTypeHeaderValue(ApiBodyEncoding.GetContentType(effectiveBodyEncoding))
+        {
+            CharSet = Encoding.UTF8.WebName
+        };
+        return content;
+    }
+
+    private static IEnumerable<KeyValuePair<string, string>> ParseFormUrlEncodedPayload(string payload)
+    {
+        if (string.IsNullOrEmpty(payload))
+        {
+            return [];
+        }
+
+        return payload
+            .Split('&', StringSplitOptions.TrimEntries)
+            .Select(part =>
+            {
+                var separatorIndex = part.IndexOf('=');
+                if (separatorIndex < 0)
+                {
+                    return new KeyValuePair<string, string>(DecodeFormUrlEncodedValue(part), string.Empty);
+                }
+
+                var key = part[..separatorIndex];
+                var value = part[(separatorIndex + 1)..];
+                return new KeyValuePair<string, string>(
+                    DecodeFormUrlEncodedValue(key),
+                    DecodeFormUrlEncodedValue(value));
+            });
+    }
+
+    private static string DecodeFormUrlEncodedValue(string value)
+    {
+        return Uri.UnescapeDataString(value.Replace("+", " ", StringComparison.Ordinal));
     }
 
     private async Task LogErrorAsync(Guid apiCallId, string errorMessage, bool logErrorsToSentry, Exception? exception = null)
