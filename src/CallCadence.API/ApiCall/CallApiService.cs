@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Net.Http.Headers;
+using System.Text;
 using BugLogger.Interfaces;
 using CallCadence.API.Dashboard;
 using CallCadence.API.Hubs;
@@ -144,13 +146,22 @@ public sealed class CallApiService
 
             var httpRequest = new HttpRequestMessage(new HttpMethod(request.HttpMethod), endpointUrl);
             var processedHeaders = new List<NamedValue>();
+            string? contentTypeHeaderValue = null;
 
             foreach (var header in request.Headers)
             {
                 if (!string.IsNullOrWhiteSpace(header.Name))
                 {
                     var headerValue = header.Value == null ? null : MacroSubstitutionProcessor.Process(header.Value);
-                    httpRequest.Headers.TryAddWithoutValidation(header.Name, headerValue);
+                    if (header.Name.Equals("Content-Type", StringComparison.OrdinalIgnoreCase))
+                    {
+                        contentTypeHeaderValue = headerValue;
+                    }
+                    else
+                    {
+                        httpRequest.Headers.TryAddWithoutValidation(header.Name, headerValue);
+                    }
+
                     processedHeaders.Add(new NamedValue
                     {
                         Name = header.Name,
@@ -166,10 +177,7 @@ public sealed class CallApiService
                  request.HttpMethod.Equals("PATCH", StringComparison.OrdinalIgnoreCase)))
             {
                 processedPayload = MacroSubstitutionProcessor.Process(request.Payload);
-                httpRequest.Content = new StringContent(
-                    processedPayload,
-                    System.Text.Encoding.UTF8,
-                    "application/json");
+                httpRequest.Content = CreateBodyContent(processedPayload, request.BodyEncoding, contentTypeHeaderValue);
             }
 
             response.RequestUri = endpointUrl;
@@ -245,6 +253,7 @@ public sealed class CallApiService
 
                 var request = new HttpRequestMessage(new HttpMethod(apiCall.HttpMethod), endpointUrl);
                 var processedHeaders = new List<NamedValue>();
+                string? contentTypeHeaderValue = null;
 
                 // Add headers if present
                 foreach (var header in apiCall.Headers)
@@ -252,7 +261,15 @@ public sealed class CallApiService
                     if (!string.IsNullOrWhiteSpace(header.Name))
                     {
                         var headerValue = header.Value == null ? null : MacroSubstitutionProcessor.Process(header.Value);
-                        request.Headers.TryAddWithoutValidation(header.Name, headerValue);
+                        if (header.Name.Equals("Content-Type", StringComparison.OrdinalIgnoreCase))
+                        {
+                            contentTypeHeaderValue = headerValue;
+                        }
+                        else
+                        {
+                            request.Headers.TryAddWithoutValidation(header.Name, headerValue);
+                        }
+
                         processedHeaders.Add(new NamedValue
                         {
                             Name = header.Name,
@@ -269,10 +286,7 @@ public sealed class CallApiService
                      apiCall.HttpMethod.Equals("PATCH", StringComparison.OrdinalIgnoreCase)))
                 {
                     processedPayload = MacroSubstitutionProcessor.Process(apiCall.Payload);
-                    request.Content = new StringContent(
-                        processedPayload,
-                        System.Text.Encoding.UTF8,
-                        "application/json");
+                    request.Content = CreateBodyContent(processedPayload, apiCall.BodyEncoding, contentTypeHeaderValue);
                 }
 
                 log.RequestUri = endpointUrl;
@@ -338,6 +352,67 @@ public sealed class CallApiService
             errorMessage);
 
         await _hubContext.Clients.All.SendAsync("ApiCallCompleted", completionEvent);
+    }
+
+    private static HttpContent CreateBodyContent(string payload, int? bodyEncoding, string? contentTypeHeaderValue = null)
+    {
+        var effectiveBodyEncoding = bodyEncoding ?? ApiBodyEncoding.Json;
+        var defaultContentType = ApiBodyEncoding.GetContentType(effectiveBodyEncoding);
+        var hasExplicitContentType = MediaTypeHeaderValue.TryParse(contentTypeHeaderValue, out var explicitContentType);
+
+        if (effectiveBodyEncoding == ApiBodyEncoding.FormUrlEncoded)
+        {
+            var formContent = new FormUrlEncodedContent(ParseFormUrlEncodedPayload(payload));
+            if (hasExplicitContentType &&
+                string.Equals(explicitContentType!.MediaType, ApiBodyEncoding.GetContentType(ApiBodyEncoding.FormUrlEncoded), StringComparison.OrdinalIgnoreCase))
+            {
+                formContent.Headers.ContentType = explicitContentType;
+            }
+
+            return formContent;
+        }
+
+        var content = new ByteArrayContent(Encoding.UTF8.GetBytes(payload));
+        var resolvedContentType = hasExplicitContentType
+            ? explicitContentType!
+            : MediaTypeHeaderValue.Parse(defaultContentType);
+        content.Headers.ContentType = resolvedContentType;
+        if (string.IsNullOrWhiteSpace(resolvedContentType.CharSet))
+        {
+            resolvedContentType.CharSet = Encoding.UTF8.WebName;
+        }
+
+        return content;
+    }
+
+    private static IEnumerable<KeyValuePair<string, string>> ParseFormUrlEncodedPayload(string payload)
+    {
+        if (string.IsNullOrEmpty(payload))
+        {
+            return [];
+        }
+
+        return payload
+            .Split('&', StringSplitOptions.TrimEntries)
+            .Select(part =>
+            {
+                var separatorIndex = part.IndexOf('=');
+                if (separatorIndex < 0)
+                {
+                    return new KeyValuePair<string, string>(DecodeFormUrlEncodedValue(part), string.Empty);
+                }
+
+                var key = part[..separatorIndex];
+                var value = part[(separatorIndex + 1)..];
+                return new KeyValuePair<string, string>(
+                    DecodeFormUrlEncodedValue(key),
+                    DecodeFormUrlEncodedValue(value));
+            });
+    }
+
+    private static string DecodeFormUrlEncodedValue(string value)
+    {
+        return Uri.UnescapeDataString(value.Replace("+", " ", StringComparison.Ordinal));
     }
 
     private async Task LogErrorAsync(Guid apiCallId, string errorMessage, bool logErrorsToSentry, Exception? exception = null)
