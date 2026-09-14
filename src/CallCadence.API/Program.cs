@@ -384,7 +384,10 @@ if (!app.Environment.IsEnvironment("Testing"))
 // current user's JWT on the query string. We validate the token, confirm the Admin role,
 // then issue a short-lived cookie (scoped to /hangfire) and redirect to the dashboard.
 // The endpoint is intentionally anonymous because it performs its own token validation.
-app.MapGet("/hangfire/login", async (HttpContext context) =>
+// It must live OUTSIDE the "/hangfire" segment: the Hangfire dashboard middleware claims
+// the entire /hangfire prefix, so a nested /hangfire/login would be swallowed by the
+// dashboard and never reach this endpoint.
+app.MapGet("/hangfire-login", async (HttpContext context) =>
 {
     var accessToken = context.Request.Query["access_token"].ToString();
     if (string.IsNullOrWhiteSpace(accessToken))

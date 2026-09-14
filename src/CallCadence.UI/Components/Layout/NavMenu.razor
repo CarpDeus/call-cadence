@@ -40,7 +40,7 @@
                 return null;
             }
 
-            return $"{apiBaseUrl.TrimEnd('/')}/hangfire/login?access_token={Uri.EscapeDataString(token)}";
+            return $"{apiBaseUrl.TrimEnd('/')}/hangfire-login?access_token={Uri.EscapeDataString(token)}";
         }
     }
 }
