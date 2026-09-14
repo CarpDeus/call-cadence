@@ -35,6 +35,7 @@ public sealed class CallCadenceDbContext : IdentityDbContext<AdminUser>, IDataPr
     public DbSet<ApiCallSchedule> ApiCallSchedules => Set<ApiCallSchedule>();
     public DbSet<ApiCallArchive> ApiCallArchives => Set<ApiCallArchive>();
     public DbSet<ApiCallLog> ApiCallLogs => Set<ApiCallLog>();
+    public DbSet<BodyEncoding> BodyEncodings => Set<BodyEncoding>();
     public DbSet<SsoConfiguration> SsoConfigurations => Set<SsoConfiguration>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
@@ -64,9 +65,14 @@ public sealed class CallCadenceDbContext : IdentityDbContext<AdminUser>, IDataPr
                 .HasColumnType("nvarchar(max)");
             entity.Property(e => e.IsActive).IsRequired();
             entity.Property(e => e.LogErrorsToSentry).IsRequired();
+            entity.Property(e => e.BodyEncoding);
             entity.Property(e => e.ExpectedStatusCode);
             entity.Property(e => e.CreatedAt).IsRequired();
             entity.Property(e => e.ModifiedAt).IsRequired();
+            entity.HasOne<BodyEncoding>()
+                .WithMany()
+                .HasForeignKey(e => e.BodyEncoding)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<ApiCallSchedule>(entity =>
@@ -105,11 +111,25 @@ public sealed class CallCadenceDbContext : IdentityDbContext<AdminUser>, IDataPr
                 .HasColumnType("nvarchar(max)");
             entity.Property(e => e.IsActive).IsRequired();
             entity.Property(e => e.LogErrorsToSentry).IsRequired();
+            entity.Property(e => e.BodyEncoding);
             entity.Property(e => e.ExpectedStatusCode);
             entity.Property(e => e.ArchivedAt).IsRequired();
             entity.Property(e => e.OriginalCreatedAt).IsRequired();
             entity.Property(e => e.OriginalModifiedAt).IsRequired();
             entity.HasIndex(e => e.ApiCallId);
+            entity.HasOne<BodyEncoding>()
+                .WithMany()
+                .HasForeignKey(e => e.BodyEncoding)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<BodyEncoding>(entity =>
+        {
+            entity.ToTable("BodyEncodings");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.HasData(BodyEncoding.SeedData);
         });
 
         modelBuilder.Entity<ApiCallLog>(entity =>

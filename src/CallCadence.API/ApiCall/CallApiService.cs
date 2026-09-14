@@ -166,10 +166,7 @@ public sealed class CallApiService
                  request.HttpMethod.Equals("PATCH", StringComparison.OrdinalIgnoreCase)))
             {
                 processedPayload = MacroSubstitutionProcessor.Process(request.Payload);
-                httpRequest.Content = new StringContent(
-                    processedPayload,
-                    System.Text.Encoding.UTF8,
-                    "application/json");
+                httpRequest.Content = CreateBodyContent(processedPayload, request.BodyEncoding);
             }
 
             response.RequestUri = endpointUrl;
@@ -269,10 +266,7 @@ public sealed class CallApiService
                      apiCall.HttpMethod.Equals("PATCH", StringComparison.OrdinalIgnoreCase)))
                 {
                     processedPayload = MacroSubstitutionProcessor.Process(apiCall.Payload);
-                    request.Content = new StringContent(
-                        processedPayload,
-                        System.Text.Encoding.UTF8,
-                        "application/json");
+                    request.Content = CreateBodyContent(processedPayload, apiCall.BodyEncoding);
                 }
 
                 log.RequestUri = endpointUrl;
@@ -338,6 +332,15 @@ public sealed class CallApiService
             errorMessage);
 
         await _hubContext.Clients.All.SendAsync("ApiCallCompleted", completionEvent);
+    }
+
+    private static StringContent CreateBodyContent(string payload, int? bodyEncoding)
+    {
+        var effectiveBodyEncoding = bodyEncoding ?? ApiBodyEncoding.Json;
+        return new StringContent(
+            payload,
+            System.Text.Encoding.UTF8,
+            ApiBodyEncoding.GetContentType(effectiveBodyEncoding));
     }
 
     private async Task LogErrorAsync(Guid apiCallId, string errorMessage, bool logErrorsToSentry, Exception? exception = null)
