@@ -163,37 +163,11 @@
                     <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Href="/api-editing">Cancel</MudButton>
                 </MudStack>
 
-                @if (_testResult is not null || _isTesting)
+                @if (_isTesting)
                 {
                     <MudPaper Outlined="true" Class="pa-4 mt-2">
-                        @if (_isTesting)
-                        {
-                            <MudProgressLinear Indeterminate="true" Color="Color.Info" Class="mb-2" />
-                            <MudText Typo="Typo.body2">Executing test call…</MudText>
-                        }
-                        else if (_testResult is not null)
-                        {
-                            <MudStack Spacing="1">
-                                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
-                                    <MudText Typo="Typo.h6">Test Result</MudText>
-                                    <MudChip T="string" Color="@(_testResult.Success ? Color.Success : Color.Error)" Size="Size.Small">
-                                        @(_testResult.Success ? "Success" : "Failed")
-                                    </MudChip>
-                                </MudStack>
-                                <MudText Typo="Typo.body2"><strong>URL:</strong> @(_testResult.RequestUri ?? "—")</MudText>
-                                <MudText Typo="Typo.body2"><strong>Response Code:</strong> @_testResult.ResponseCode</MudText>
-                                <MudText Typo="Typo.body2"><strong>Duration:</strong> @_testResult.DurationMs ms</MudText>
-                                @if (!string.IsNullOrWhiteSpace(_testResult.ErrorMessage))
-                                {
-                                    <MudAlert Severity="Severity.Error" Dense="true">@_testResult.ErrorMessage</MudAlert>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(_testResult.ResponseBody))
-                                {
-                                    <MudText Typo="Typo.subtitle2" Class="mt-1">Response Body</MudText>
-                                    <MudText Typo="Typo.body2" Style="white-space: pre-wrap; overflow-wrap: break-word;">@_testResult.ResponseBody</MudText>
-                                }
-                            </MudStack>
-                        }
+                        <MudProgressLinear Indeterminate="true" Color="Color.Info" Class="mb-2" />
+                        <MudText Typo="Typo.body2">Executing test call…</MudText>
                     </MudPaper>
                 }
             </MudStack>
@@ -482,6 +456,42 @@
     </MudTabs>
 </MudPaper>
 
+<MudDialog @bind-Visible="_showTestResultDialog" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true }">
+    <TitleContent>
+        @if (_testResult is not null)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                <MudText Typo="Typo.h6">Test Result</MudText>
+                <MudChip T="string" Color="@(_testResult.Success ? Color.Success : Color.Error)" Size="Size.Small">
+                    @(_testResult.Success ? "Success" : "Failed")
+                </MudChip>
+            </MudStack>
+        }
+    </TitleContent>
+    <DialogContent>
+        @if (_testResult is not null)
+        {
+            <MudStack Spacing="1">
+                <MudText Typo="Typo.body2"><strong>URL:</strong> @(_testResult.RequestUri ?? "—")</MudText>
+                <MudText Typo="Typo.body2"><strong>Response Code:</strong> @_testResult.ResponseCode</MudText>
+                <MudText Typo="Typo.body2"><strong>Duration:</strong> @_testResult.DurationMs ms</MudText>
+                @if (!string.IsNullOrWhiteSpace(_testResult.ErrorMessage))
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true">@_testResult.ErrorMessage</MudAlert>
+                }
+                @if (!string.IsNullOrWhiteSpace(_testResult.ResponseBody))
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mt-1">Response Body</MudText>
+                    <MudText Typo="Typo.body2" Style="white-space: pre-wrap; overflow-wrap: break-word;">@_testResult.ResponseBody</MudText>
+                }
+            </MudStack>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton Color="Color.Primary" OnClick="@(() => _showTestResultDialog = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
 </AuthGuard>
 
 @code {
@@ -532,6 +542,7 @@
     private long _copyStatusMessageVersion;
     private bool _isTesting;
     private TestApiCallResponse? _testResult;
+    private bool _showTestResultDialog;
     private bool _showSelectedLogJson;
     private string _selectedLogJson = string.Empty;
 
@@ -675,6 +686,7 @@
     private async Task TestApiCallAsync()
     {
         _testResult = null;
+        _showTestResultDialog = false;
         _isTesting = true;
         StateHasChanged();
 
@@ -690,6 +702,8 @@
                 Headers = _model.Headers,
                 Parameters = _model.Parameters
             });
+
+            _showTestResultDialog = true;
         }
         catch (HttpRequestException ex) when (ex.StatusCode is System.Net.HttpStatusCode.Unauthorized
             or System.Net.HttpStatusCode.Forbidden)
@@ -705,10 +719,13 @@
                 Success = false,
                 ErrorMessage = ApiClient.GetErrorMessage(ex, ex.Message)
             };
+
+            _showTestResultDialog = true;
         }
         finally
         {
             _isTesting = false;
+            StateHasChanged();
         }
     }
 
