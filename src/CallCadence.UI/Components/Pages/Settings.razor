@@ -4,9 +4,11 @@
 @rendermode InteractiveServer
 @using CallCadence.Models.Auth
 @using CallCadence.UI.Services
+@using CallCadence.UI.Components.Pages.Dialogs
 @inject CallCadenceApiClient ApiClient
 @inject UserSessionState Session
 @inject NavigationManager NavigationManager
+@inject IDialogService DialogService
 
 <PageTitle>@PageTitleText</PageTitle>
 
@@ -51,12 +53,12 @@
                                                Size="Size.Small"
                                                title="Edit user"
                                                Disabled="_isSaving || context.IsDeactivated"
-                                               OnClick="@(() => BeginEditUser(context))" />
+                                               OnClick="@(() => OpenEditUserDialogAsync(context))" />
                                 <MudIconButton Icon="Icons.Material.Filled.Password"
                                                Size="Size.Small"
                                                title="Set password"
                                                Disabled="_isSaving || context.IsDeactivated"
-                                               OnClick="@(() => BeginPasswordReset(context))" />
+                                               OnClick="@(() => OpenSetPasswordDialogAsync(context))" />
                                 <MudIconButton Icon="Icons.Material.Filled.PersonOff"
                                                Color="Color.Error"
                                                Size="Size.Small"
@@ -69,83 +71,9 @@
                 </MudTable>
             }
 
-            @if (!_showCreateUserForm)
-            {
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="Icons.Material.Filled.PersonAdd" OnClick="BeginAddUser">
-                    Add User
-                </MudButton>
-            }
-
-            @if (_showCreateUserForm)
-            {
-                <MudDivider Class="my-4" />
-                <MudText Typo="Typo.h6" Class="mb-2">Add User</MudText>
-                <MudStack Spacing="2">
-                    <MudTextField Label="Email" @bind-Value="_createUserRequest.Email" />
-                    <MudTextField Label="Password"
-                                  @bind-Value="_createUserRequest.Password"
-                                  InputType="InputType.Password"
-                                  HelperText="12+ characters with upper, lower, digit, and symbol." />
-                    <MudTextField Label="Confirm Password"
-                                  @bind-Value="_createUserConfirmPassword"
-                                  InputType="InputType.Password"
-                                  HelperText="Re-enter the password to confirm." />
-                    <MudSwitch T="bool" Label="Grant admin access" @bind-Value="_createUserRequest.IsAdmin" Color="Color.Primary" />
-
-                    <MudStack Row="true" Spacing="2">
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_isSaving" OnClick="CreateUserAsync">
-                            Create User
-                        </MudButton>
-                        <MudButton Variant="Variant.Outlined" Disabled="_isSaving" OnClick="CancelCreateUser">
-                            Cancel
-                        </MudButton>
-                    </MudStack>
-                </MudStack>
-            }
-
-            @if (_editUser is not null)
-            {
-                <MudDivider Class="my-4" />
-                <MudText Typo="Typo.h6" Class="mb-2">Edit User: @_editUser.Email</MudText>
-                <MudStack Spacing="2">
-                    <MudTextField Label="Email" Value="@_editUser.Email" ReadOnly="true" Variant="Variant.Outlined" />
-                    <MudSwitch T="bool" Label="Is administrator" @bind-Value="_editUserRequest.IsAdmin" Color="Color.Primary" />
-
-                    <MudStack Row="true" Spacing="2">
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_isSaving" OnClick="SaveEditUserAsync">
-                            Save Changes
-                        </MudButton>
-                        <MudButton Variant="Variant.Outlined" Disabled="_isSaving" OnClick="CancelEditUser">
-                            Cancel
-                        </MudButton>
-                    </MudStack>
-                </MudStack>
-            }
-
-            @if (_passwordResetUser is not null)
-            {
-                <MudDivider Class="my-4" />
-                <MudText Typo="Typo.h6" Class="mb-2">Set Password for @_passwordResetUser.Email</MudText>
-                <MudStack Spacing="2">
-                    <MudTextField Label="New Password"
-                                  @bind-Value="_passwordResetRequest.Password"
-                                  InputType="InputType.Password"
-                                  HelperText="12+ characters with upper, lower, digit, and symbol." />
-                    <MudTextField Label="Confirm Password"
-                                  @bind-Value="_passwordResetConfirmPassword"
-                                  InputType="InputType.Password"
-                                  HelperText="Re-enter the password to confirm." />
-
-                    <MudStack Row="true" Spacing="2">
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_isSaving" OnClick="SetPasswordAsync">
-                            Save Password
-                        </MudButton>
-                        <MudButton Variant="Variant.Outlined" Disabled="_isSaving" OnClick="CancelPasswordReset">
-                            Cancel
-                        </MudButton>
-                    </MudStack>
-                </MudStack>
-            }
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="Icons.Material.Filled.PersonAdd" Disabled="_isSaving" OnClick="OpenAddUserDialogAsync">
+                Add User
+            </MudButton>
         }
         else if (IsSsoSection)
         {
@@ -160,7 +88,7 @@
                 </MudAlert>
             }
 
-            @if (_providers.Count == 0 && !_showSsoForm)
+            @if (_providers.Count == 0)
             {
                 <MudText Typo="Typo.body2" Class="mb-4">No SSO providers configured.</MudText>
             }
@@ -188,7 +116,7 @@
                         {
                             <MudTd>
                                 <MudIconButton Icon="Icons.Material.Filled.Edit" Size="Size.Small" Disabled="_isSaving"
-                                               OnClick="@(() => BeginEditProvider(context))" />
+                                               OnClick="@(() => OpenSsoProviderDialogAsync(context))" />
                                 <MudIconButton Icon="Icons.Material.Filled.Delete" Size="Size.Small" Disabled="_isSaving"
                                                Color="Color.Error"
                                                OnClick="@(() => DeleteProviderAsync(context.SchemeName))" />
@@ -198,43 +126,11 @@
                 </MudTable>
             }
 
-            @if (!_isOverriddenByEnvironment && !_showSsoForm)
+            @if (!_isOverriddenByEnvironment)
             {
-                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="Icons.Material.Filled.Add" OnClick="BeginAddProvider">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="Icons.Material.Filled.Add" Disabled="_isSaving" OnClick="OpenAddSsoProviderDialogAsync">
                     Add Provider
                 </MudButton>
-            }
-
-            @if (_showSsoForm)
-            {
-                <MudDivider Class="my-4" />
-                <MudText Typo="Typo.h6" Class="mb-2">@(_isEditingProvider ? "Edit Provider" : "New Provider")</MudText>
-
-                <MudStack Spacing="2">
-                    <MudTextField Label="Provider Name" @bind-Value="_providerRequest.Name"
-                                  Placeholder="Azure AD"
-                                  Disabled="_isEditingProvider"
-                                  HelperText="@(_isEditingProvider ? "Provider name cannot be changed." : "Human-readable name, e.g. 'Azure AD'.")" />
-                    <MudSwitch T="bool" Label="Enable this provider" @bind-Value="_providerRequest.IsEnabled" Color="Color.Primary" />
-                    <MudTextField Label="Authority" @bind-Value="_providerRequest.Authority"
-                                  Placeholder="https://identity.example.com" />
-                    <MudTextField Label="Metadata Address" @bind-Value="_providerRequest.MetadataAddress"
-                                  Placeholder="https://identity.example.com/.well-known/openid-configuration" />
-                    <MudTextField Label="Client ID" @bind-Value="_providerRequest.ClientId" />
-                    <MudTextField Label="Client Secret" @bind-Value="_providerRequest.ClientSecret"
-                                  InputType="InputType.Password"
-                                  HelperText="@(_hasClientSecret ? "A secret is already stored. Leave blank to keep it." : "")" />
-                    <MudTextField Label="Callback Path" @bind-Value="_providerRequest.CallbackPath"
-                                  Placeholder="/signin-oidc-azure" />
-
-                    <MudStack Row="true" Spacing="2">
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                                   Disabled="_isSaving" OnClick="SaveProviderAsync">
-                            @(_isEditingProvider ? "Update Provider" : "Add Provider")
-                        </MudButton>
-                        <MudButton Variant="Variant.Outlined" Disabled="_isSaving" OnClick="CancelProviderForm">Cancel</MudButton>
-                    </MudStack>
-                </MudStack>
             }
         }
     }
@@ -250,23 +146,11 @@
     private bool _isLoaded;
     private bool _isSaving;
     private bool _isOverriddenByEnvironment;
-    private bool _showCreateUserForm;
-    private bool _showSsoForm;
-    private bool _isEditingProvider;
-    private bool _hasClientSecret;
     private string? _message;
     private Severity _messageSeverity = Severity.Info;
     private string _activeSection = UsersSectionName;
     private List<UserSummaryResponse> _users = [];
     private List<SsoConfigurationResponse> _providers = [];
-    private CreateUserRequest _createUserRequest = new();
-    private string _createUserConfirmPassword = string.Empty;
-    private SetUserPasswordRequest _passwordResetRequest = new();
-    private string _passwordResetConfirmPassword = string.Empty;
-    private UserSummaryResponse? _passwordResetUser;
-    private UserSummaryResponse? _editUser;
-    private UpdateUserRequest _editUserRequest = new();
-    private UpsertSsoConfigurationRequest _providerRequest = new();
 
     private bool IsUsersSection => _activeSection == UsersSectionName;
 
@@ -355,124 +239,44 @@
         }
     }
 
-    private void CloseAllUserForms()
+    private async Task OpenAddUserDialogAsync()
     {
-        _showCreateUserForm = false;
-        _createUserRequest = new CreateUserRequest();
-        _createUserConfirmPassword = string.Empty;
-        _editUser = null;
-        _editUserRequest = new UpdateUserRequest();
-        _passwordResetUser = null;
-        _passwordResetRequest = new SetUserPasswordRequest();
-        _passwordResetConfirmPassword = string.Empty;
-    }
-
-    private void BeginAddUser()
-    {
-        CloseAllUserForms();
-        _showCreateUserForm = true;
         _message = null;
-    }
+        var dialog = await DialogService.ShowAsync<AddUserDialog>("Add User");
+        var result = await dialog.Result;
 
-    private void CancelCreateUser()
-    {
-        CloseAllUserForms();
-    }
-
-    private async Task CreateUserAsync()
-    {
-        if (!ValidatePassword(_createUserRequest.Password))
+        if (result is not null && !result.Canceled)
         {
-            SetMessage("Password must be 12+ characters with upper, lower, digit, and symbol.", Severity.Error);
-            return;
-        }
-
-        if (!PasswordsMatch(_createUserRequest.Password, _createUserConfirmPassword))
-        {
-            SetMessage("Passwords do not match.", Severity.Error);
-            return;
-        }
-
-        var email = _createUserRequest.Email;
-        await ExecuteSavingActionAsync(async () =>
-        {
-            await ApiClient.CreateUserAsync(_createUserRequest);
-            CloseAllUserForms();
-            SetMessage($"User '{email}' created.", Severity.Success);
+            SetMessage((string)result.Data!, Severity.Success);
             await ReloadUsersAsync();
-        }, "Unable to create user.");
-    }
-
-    private void BeginEditUser(UserSummaryResponse user)
-    {
-        CloseAllUserForms();
-        _editUser = user;
-        _editUserRequest = new UpdateUserRequest { IsAdmin = user.IsAdmin };
-        _message = null;
-    }
-
-    private void CancelEditUser()
-    {
-        CloseAllUserForms();
-    }
-
-    private async Task SaveEditUserAsync()
-    {
-        if (_editUser is null)
-        {
-            return;
         }
+    }
 
-        var userId = _editUser.Id;
-        var userEmail = _editUser.Email;
-        await ExecuteSavingActionAsync(async () =>
+    private async Task OpenEditUserDialogAsync(UserSummaryResponse user)
+    {
+        _message = null;
+        var parameters = new DialogParameters<EditUserDialog> { { x => x.User, user } };
+        var dialog = await DialogService.ShowAsync<EditUserDialog>($"Edit User: {user.Email}", parameters);
+        var result = await dialog.Result;
+
+        if (result is not null && !result.Canceled)
         {
-            await ApiClient.UpdateUserAsync(userId, _editUserRequest);
-            CloseAllUserForms();
-            SetMessage($"User '{userEmail}' updated.", Severity.Success);
+            SetMessage((string)result.Data!, Severity.Success);
             await ReloadUsersAsync();
-        }, $"Unable to update '{userEmail}'.");
+        }
     }
 
-    private void BeginPasswordReset(UserSummaryResponse user)
+    private async Task OpenSetPasswordDialogAsync(UserSummaryResponse user)
     {
-        CloseAllUserForms();
-        _passwordResetUser = user;
         _message = null;
-    }
+        var parameters = new DialogParameters<SetPasswordDialog> { { x => x.User, user } };
+        var dialog = await DialogService.ShowAsync<SetPasswordDialog>($"Set Password for {user.Email}", parameters);
+        var result = await dialog.Result;
 
-    private void CancelPasswordReset()
-    {
-        CloseAllUserForms();
-    }
-
-    private async Task SetPasswordAsync()
-    {
-        if (_passwordResetUser is null)
+        if (result is not null && !result.Canceled)
         {
-            return;
+            SetMessage((string)result.Data!, Severity.Success);
         }
-
-        if (!ValidatePassword(_passwordResetRequest.Password))
-        {
-            SetMessage("Password must be 12+ characters with upper, lower, digit, and symbol.", Severity.Error);
-            return;
-        }
-
-        if (!PasswordsMatch(_passwordResetRequest.Password, _passwordResetConfirmPassword))
-        {
-            SetMessage("Passwords do not match.", Severity.Error);
-            return;
-        }
-
-        var userId = _passwordResetUser.Id;
-        var userEmail = _passwordResetUser.Email;
-        await ExecuteSavingActionAsync(async () =>
-        {
-            await ApiClient.SetUserPasswordAsync(userId, _passwordResetRequest);
-            CloseAllUserForms();
-            SetMessage($"Password updated for '{userEmail}'.", Severity.Success);
-        }, $"Unable to update password for '{userEmail}'.");
     }
 
     private async Task DeactivateAsync(UserSummaryResponse user)
@@ -485,67 +289,27 @@
         }, $"Unable to deactivate '{user.Email}'.");
     }
 
-    private void BeginAddProvider()
-    {
-        _providerRequest = new UpsertSsoConfigurationRequest();
-        _hasClientSecret = false;
-        _isEditingProvider = false;
-        _showSsoForm = true;
-        _message = null;
-    }
+    private Task OpenAddSsoProviderDialogAsync() => ShowSsoProviderDialogAsync(null, false, "Add Provider");
 
-    private void BeginEditProvider(SsoConfigurationResponse provider)
+    private Task OpenSsoProviderDialogAsync(SsoConfigurationResponse provider)
+        => ShowSsoProviderDialogAsync(provider, provider.HasClientSecret, $"Edit Provider: {provider.Name}");
+
+    private async Task ShowSsoProviderDialogAsync(SsoConfigurationResponse? provider, bool hasClientSecret, string title)
     {
-        _providerRequest = new UpsertSsoConfigurationRequest
+        _message = null;
+        var parameters = new DialogParameters<SsoProviderDialog>
         {
-            Name = provider.Name,
-            IsEnabled = provider.IsEnabled,
-            Authority = provider.Authority,
-            MetadataAddress = provider.MetadataAddress,
-            ClientId = provider.ClientId,
-            CallbackPath = provider.CallbackPath
+            { x => x.Provider, provider },
+            { x => x.HasClientSecret, hasClientSecret }
         };
-        _hasClientSecret = provider.HasClientSecret;
-        _isEditingProvider = true;
-        _showSsoForm = true;
-        _message = null;
-    }
+        var dialog = await DialogService.ShowAsync<SsoProviderDialog>(title, parameters);
+        var result = await dialog.Result;
 
-    private void CancelProviderForm()
-    {
-        _showSsoForm = false;
-        _isEditingProvider = false;
-        _message = null;
-    }
-
-    private async Task SaveProviderAsync()
-    {
-        var validationError = ValidateProviderRequest();
-        if (validationError is not null)
+        if (result is not null && !result.Canceled)
         {
-            SetMessage(validationError, Severity.Error);
-            return;
-        }
-
-        await ExecuteSavingActionAsync(async () =>
-        {
-            var payload = new UpsertSsoConfigurationRequest
-            {
-                Name = _providerRequest.Name,
-                IsEnabled = _providerRequest.IsEnabled,
-                Authority = _providerRequest.Authority,
-                MetadataAddress = _providerRequest.MetadataAddress,
-                ClientId = _providerRequest.ClientId,
-                ClientSecret = string.IsNullOrWhiteSpace(_providerRequest.ClientSecret) ? null : _providerRequest.ClientSecret,
-                CallbackPath = _providerRequest.CallbackPath
-            };
-
-            await ApiClient.UpsertSsoConfigurationAsync(payload);
-            _showSsoForm = false;
-            _isEditingProvider = false;
-            SetMessage($"Provider '{payload.Name}' saved. A service restart is required to activate changes.", Severity.Success);
+            SetMessage((string)result.Data!, Severity.Success);
             await ReloadProvidersAsync();
-        }, "Unable to save SSO settings.");
+        }
     }
 
     private async Task DeleteProviderAsync(string schemeName)
@@ -609,21 +373,6 @@
 
     private static string FormatFlag(bool value) => value ? "Yes" : "No";
 
-    private static bool ValidatePassword(string password)
-    {
-        return !string.IsNullOrWhiteSpace(password)
-            && password.Length >= 12
-            && password.Any(char.IsUpper)
-            && password.Any(char.IsLower)
-            && password.Any(char.IsDigit)
-            && password.Any(ch => !char.IsLetterOrDigit(ch));
-    }
-
-    private static bool PasswordsMatch(string password, string confirmPassword)
-    {
-        return password == confirmPassword;
-    }
-
     private static bool TryNormalizeSection(string? section, out string normalizedSection)
     {
         if (string.Equals(section, UsersSectionName, StringComparison.OrdinalIgnoreCase))
@@ -640,57 +389,5 @@
 
         normalizedSection = string.Empty;
         return false;
-    }
-
-    private string? ValidateProviderRequest()
-    {
-        if (string.IsNullOrWhiteSpace(_providerRequest.Name))
-        {
-            return "Provider name is required.";
-        }
-
-        if (!_providerRequest.IsEnabled)
-        {
-            return null;
-        }
-
-        if (string.IsNullOrWhiteSpace(_providerRequest.Authority) && string.IsNullOrWhiteSpace(_providerRequest.MetadataAddress))
-        {
-            return "Provide either an Authority URL or Metadata Address when the provider is enabled.";
-        }
-
-        if (string.IsNullOrWhiteSpace(_providerRequest.ClientId))
-        {
-            return "Client ID is required when the provider is enabled.";
-        }
-
-        if (string.IsNullOrWhiteSpace(_providerRequest.ClientSecret) && !_hasClientSecret)
-        {
-            return "Client Secret is required when the provider is enabled.";
-        }
-
-        if (string.IsNullOrWhiteSpace(_providerRequest.CallbackPath))
-        {
-            return "Callback Path is required when the provider is enabled.";
-        }
-
-        if (!string.IsNullOrWhiteSpace(_providerRequest.Authority) &&
-            !Uri.TryCreate(_providerRequest.Authority, UriKind.Absolute, out _))
-        {
-            return "Authority must be a valid absolute URL.";
-        }
-
-        if (!string.IsNullOrWhiteSpace(_providerRequest.MetadataAddress) &&
-            !Uri.TryCreate(_providerRequest.MetadataAddress, UriKind.Absolute, out _))
-        {
-            return "Metadata Address must be a valid absolute URL.";
-        }
-
-        if (!string.IsNullOrWhiteSpace(_providerRequest.CallbackPath) && !_providerRequest.CallbackPath.StartsWith('/'))
-        {
-            return "Callback Path must start with '/'.";
-        }
-
-        return null;
     }
 }

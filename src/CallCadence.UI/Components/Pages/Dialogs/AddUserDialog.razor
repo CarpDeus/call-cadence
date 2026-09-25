@@ -1,0 +1,75 @@
+@using CallCadence.Models.Auth
+@using CallCadence.UI.Services
+@inject CallCadenceApiClient ApiClient
+
+<MudDialog>
+    <DialogContent>
+        @if (!string.IsNullOrWhiteSpace(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+        }
+        <MudStack Spacing="2">
+            <MudTextField Label="Email" @bind-Value="_request.Email" />
+            <MudTextField Label="Password"
+                          @bind-Value="_request.Password"
+                          InputType="InputType.Password"
+                          HelperText="12+ characters with upper, lower, digit, and symbol." />
+            <MudTextField Label="Confirm Password"
+                          @bind-Value="_confirmPassword"
+                          InputType="InputType.Password"
+                          HelperText="Re-enter the password to confirm." />
+            <MudSwitch T="bool" Label="Grant admin access" @bind-Value="_request.IsAdmin" Color="Color.Primary" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Disabled="_isSaving" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_isSaving" OnClick="SubmitAsync">
+            Create User
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    private readonly CreateUserRequest _request = new();
+    private string _confirmPassword = string.Empty;
+    private bool _isSaving;
+    private string? _error;
+
+    private async Task SubmitAsync()
+    {
+        if (!DialogValidation.ValidatePassword(_request.Password))
+        {
+            _error = "Password must be 12+ characters with upper, lower, digit, and symbol.";
+            return;
+        }
+
+        if (_request.Password != _confirmPassword)
+        {
+            _error = "Passwords do not match.";
+            return;
+        }
+
+        _isSaving = true;
+        _error = null;
+
+        try
+        {
+            var email = _request.Email;
+            await ApiClient.CreateUserAsync(_request);
+            MudDialog.Close(DialogResult.Ok($"User '{email}' created."));
+        }
+        catch (Exception ex)
+        {
+            _error = ApiClient.GetErrorMessage(ex, "Unable to create user.");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
