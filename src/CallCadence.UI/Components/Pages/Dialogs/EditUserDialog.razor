@@ -1,0 +1,61 @@
+@using CallCadence.Models.Auth
+@using CallCadence.UI.Services
+@inject CallCadenceApiClient ApiClient
+
+<MudDialog>
+    <DialogContent>
+        @if (!string.IsNullOrWhiteSpace(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+        }
+        <MudStack Spacing="2">
+            <MudTextField Label="Email" Value="@User.Email" ReadOnly="true" Variant="Variant.Outlined" />
+            <MudSwitch T="bool" Label="Is administrator" @bind-Value="_request.IsAdmin" Color="Color.Primary" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Disabled="_isSaving" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_isSaving" OnClick="SubmitAsync">
+            Save Changes
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public UserSummaryResponse User { get; set; } = default!;
+
+    private UpdateUserRequest _request = new();
+    private bool _isSaving;
+    private string? _error;
+
+    protected override void OnInitialized()
+    {
+        _request = new UpdateUserRequest { IsAdmin = User.IsAdmin };
+    }
+
+    private async Task SubmitAsync()
+    {
+        _isSaving = true;
+        _error = null;
+
+        try
+        {
+            await ApiClient.UpdateUserAsync(User.Id, _request);
+            MudDialog.Close(DialogResult.Ok($"User '{User.Email}' updated."));
+        }
+        catch (Exception ex)
+        {
+            _error = ApiClient.GetErrorMessage(ex, $"Unable to update '{User.Email}'.");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

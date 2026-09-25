@@ -1,0 +1,160 @@
+@using CallCadence.Models.Auth
+@using CallCadence.UI.Services
+@inject CallCadenceApiClient ApiClient
+
+<MudDialog>
+    <DialogContent>
+        @if (!string.IsNullOrWhiteSpace(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+        }
+        <MudStack Spacing="2">
+            <MudTextField Label="Provider Name" @bind-Value="_request.Name"
+                          Placeholder="Azure AD"
+                          Disabled="_isEditing"
+                          HelperText="@(_isEditing ? "Provider name cannot be changed." : "Human-readable name, e.g. 'Azure AD'.")" />
+            <MudSwitch T="bool" Label="Enable this provider" @bind-Value="_request.IsEnabled" Color="Color.Primary" />
+            <MudTextField Label="Authority" @bind-Value="_request.Authority"
+                          Placeholder="https://identity.example.com" />
+            <MudTextField Label="Metadata Address" @bind-Value="_request.MetadataAddress"
+                          Placeholder="https://identity.example.com/.well-known/openid-configuration" />
+            <MudTextField Label="Client ID" @bind-Value="_request.ClientId" />
+            <MudTextField Label="Client Secret" @bind-Value="_request.ClientSecret"
+                          InputType="InputType.Password"
+                          HelperText="@(HasClientSecret ? "A secret is already stored. Leave blank to keep it." : "")" />
+            <MudTextField Label="Callback Path" @bind-Value="_request.CallbackPath"
+                          Placeholder="/signin-oidc-azure" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Disabled="_isSaving" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_isSaving" OnClick="SubmitAsync">
+            @(_isEditing ? "Update Provider" : "Add Provider")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public SsoConfigurationResponse? Provider { get; set; }
+
+    [Parameter]
+    public bool HasClientSecret { get; set; }
+
+    private UpsertSsoConfigurationRequest _request = new();
+    private bool _isEditing;
+    private bool _isSaving;
+    private string? _error;
+
+    protected override void OnInitialized()
+    {
+        _isEditing = Provider is not null;
+
+        _request = Provider is null
+            ? new UpsertSsoConfigurationRequest()
+            : new UpsertSsoConfigurationRequest
+            {
+                Name = Provider.Name,
+                IsEnabled = Provider.IsEnabled,
+                Authority = Provider.Authority,
+                MetadataAddress = Provider.MetadataAddress,
+                ClientId = Provider.ClientId,
+                CallbackPath = Provider.CallbackPath
+            };
+    }
+
+    private async Task SubmitAsync()
+    {
+        var validationError = Validate();
+        if (validationError is not null)
+        {
+            _error = validationError;
+            return;
+        }
+
+        _isSaving = true;
+        _error = null;
+
+        try
+        {
+            var payload = new UpsertSsoConfigurationRequest
+            {
+                Name = _request.Name,
+                IsEnabled = _request.IsEnabled,
+                Authority = _request.Authority,
+                MetadataAddress = _request.MetadataAddress,
+                ClientId = _request.ClientId,
+                ClientSecret = string.IsNullOrWhiteSpace(_request.ClientSecret) ? null : _request.ClientSecret,
+                CallbackPath = _request.CallbackPath
+            };
+
+            await ApiClient.UpsertSsoConfigurationAsync(payload);
+            MudDialog.Close(DialogResult.Ok($"Provider '{payload.Name}' saved. A service restart is required to activate changes."));
+        }
+        catch (Exception ex)
+        {
+            _error = ApiClient.GetErrorMessage(ex, "Unable to save SSO settings.");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private string? Validate()
+    {
+        if (string.IsNullOrWhiteSpace(_request.Name))
+        {
+            return "Provider name is required.";
+        }
+
+        if (!_request.IsEnabled)
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(_request.Authority) && string.IsNullOrWhiteSpace(_request.MetadataAddress))
+        {
+            return "Provide either an Authority URL or Metadata Address when the provider is enabled.";
+        }
+
+        if (string.IsNullOrWhiteSpace(_request.ClientId))
+        {
+            return "Client ID is required when the provider is enabled.";
+        }
+
+        if (string.IsNullOrWhiteSpace(_request.ClientSecret) && !HasClientSecret)
+        {
+            return "Client Secret is required when the provider is enabled.";
+        }
+
+        if (string.IsNullOrWhiteSpace(_request.CallbackPath))
+        {
+            return "Callback Path is required when the provider is enabled.";
+        }
+
+        if (!string.IsNullOrWhiteSpace(_request.Authority) &&
+            !Uri.TryCreate(_request.Authority, UriKind.Absolute, out _))
+        {
+            return "Authority must be a valid absolute URL.";
+        }
+
+        if (!string.IsNullOrWhiteSpace(_request.MetadataAddress) &&
+            !Uri.TryCreate(_request.MetadataAddress, UriKind.Absolute, out _))
+        {
+            return "Metadata Address must be a valid absolute URL.";
+        }
+
+        if (!string.IsNullOrWhiteSpace(_request.CallbackPath) && !_request.CallbackPath.StartsWith('/'))
+        {
+            return "Callback Path must start with '/'.";
+        }
+
+        return null;
+    }
+}
