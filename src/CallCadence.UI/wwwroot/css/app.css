@@ -1,0 +1,14 @@
+/* Reusable pattern: keep MudTabs headers pinned while panel content scrolls.
+   Apply Class="scrollable-tabs" to a <MudTabs> element. */
+.scrollable-tabs .mud-tabs-tabbar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background-color: var(--mud-palette-surface, #fff);
+}
+
+.scrollable-tabs .mud-tabs-panels {
+    overflow-y: auto;
+    /* Fill the viewport below the app bar, page padding, card padding, title and tabbar. */
+    max-height: calc(100vh - 200px);
+}
