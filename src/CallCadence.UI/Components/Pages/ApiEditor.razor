@@ -20,7 +20,7 @@
 <MudPaper Class="pa-4" MaxWidth="MaxWidth.Medium">
     <MudText Typo="Typo.h5" Class="mb-4">@(_isEditMode ? "Edit API" : "Add API")</MudText>
 
-    <MudTabs>
+    <MudTabs Class="scrollable-tabs">
         <MudTabPanel Text="Details">
             <MudStack Spacing="2" Class="pt-2">
                 <MudTextField Label="Title" @bind-Value="_model.Title" Required="true" />
@@ -214,16 +214,17 @@
                 </PagerContent>
             </MudTable>
 
-            @if (_selectedLog is not null)
-            {
-                <MudPaper Outlined="true" Class="pa-4 mt-4">
+            <MudDialog @bind-Visible="_showLogDetailDialog" Options="new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true }">
+                <TitleContent>
+                    <MudText Typo="Typo.h6">Selected Call Details</MudText>
+                </TitleContent>
+                <DialogContent>
+                @if (_selectedLog is not null)
+                {
                     <MudStack Spacing="2">
-                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
-                            <MudText Typo="Typo.h6">Selected Call Details</MudText>
-                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
-                                Use the copy button on any field to copy the value shown for that field.
-                            </MudText>
-                        </MudStack>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                            Use the copy button on any field to copy the value shown for that field.
+                        </MudText>
 
                         @if (!string.IsNullOrWhiteSpace(_lastCopiedField))
                         {
@@ -450,8 +451,12 @@
                             </MudItem>
                         </MudGrid>
                     </MudStack>
-                </MudPaper>
-            }
+                }
+                </DialogContent>
+                <DialogActions>
+                    <MudButton Color="Color.Primary" OnClick="CloseLogDetailDialog">Close</MudButton>
+                </DialogActions>
+            </MudDialog>
         </MudTabPanel>
     </MudTabs>
 </MudPaper>
@@ -543,6 +548,7 @@
     private bool _isTesting;
     private TestApiCallResponse? _testResult;
     private bool _showTestResultDialog;
+    private bool _showLogDetailDialog;
     private bool _showSelectedLogJson;
     private string _selectedLogJson = string.Empty;
 
@@ -799,11 +805,16 @@
             return;
         }
 
-        _selectedLog = _selectedLog?.Id == args.Item.Id ? null : args.Item;
-        _selectedLogJson = _selectedLog is null
-            ? string.Empty
-            : JsonSerializer.Serialize(_selectedLog, DefaultJsonSerializerOptions);
+        _selectedLog = args.Item;
+        _selectedLogJson = JsonSerializer.Serialize(_selectedLog, DefaultJsonSerializerOptions);
         _showSelectedLogJson = false;
+        ClearCopyStatus();
+        _showLogDetailDialog = true;
+    }
+
+    private void CloseLogDetailDialog()
+    {
+        _showLogDetailDialog = false;
         ClearCopyStatus();
     }
 
