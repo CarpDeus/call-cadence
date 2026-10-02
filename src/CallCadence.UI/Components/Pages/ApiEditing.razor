@@ -122,11 +122,22 @@
 
         try
         {
-            var savedEnabled = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", EnabledFilterStorageKey);
-            if (savedEnabled is not null && Enum.TryParse<TriStateFilterOption>(savedEnabled, out var parsedEnabled))
-            {
-                _enabledFilter = parsedEnabled;
-            }
+var savedEnabled = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", EnabledFilterStorageKey);
+if (savedEnabled is not null)
+{
+    if (Enum.TryParse<TriStateFilterOption>(savedEnabled, out var parsedEnabled))
+    {
+        _enabledFilter = parsedEnabled;
+    }
+    else if (string.Equals(savedEnabled, "Enabled", StringComparison.Ordinal))
+    {
+        _enabledFilter = TriStateFilterOption.Yes;
+    }
+    else if (string.Equals(savedEnabled, "Disabled", StringComparison.Ordinal))
+    {
+        _enabledFilter = TriStateFilterOption.No;
+    }
+}
 
             var savedSchedule = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", ScheduleFilterStorageKey);
             if (savedSchedule is not null && Enum.TryParse<TriStateFilterOption>(savedSchedule, out var parsedSchedule))
