@@ -93,8 +93,8 @@ public sealed class ApiCallRepository : IApiCallRepository
 
         if (!string.IsNullOrWhiteSpace(title))
         {
-            var pattern = $"%{title.Trim()}%";
-            query = query.Where(apiCall => EF.Functions.Like(apiCall.Title, pattern));
+var titleFilter = title.Trim();
+query = query.Where(apiCall => apiCall.Title.Contains(titleFilter));
         }
 
         if (hasSchedule.HasValue)
