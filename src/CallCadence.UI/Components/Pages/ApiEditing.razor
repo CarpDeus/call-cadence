@@ -51,6 +51,8 @@
     <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/api-editing/new">Add API</MudButton>
 </MudStack>
 
+@if (_filtersReady)
+{
 <MudTable T="ApiCallListItemDto"
           @ref="_table"
           ServerData="LoadApiCallsAsync"
@@ -95,6 +97,7 @@
         <MudTablePager PageSizeOptions="new[] { 10, 25, 50 }" />
     </PagerContent>
 </MudTable>
+}
 
 </AuthGuard>
 
@@ -104,6 +107,7 @@
     private TriStateFilterOption _enabledFilter = TriStateFilterOption.Yes;
     private TriStateFilterOption _scheduleFilter = TriStateFilterOption.All;
     private string _titleFilter = string.Empty;
+    private bool _filtersReady;
 
     private const string EnabledFilterStorageKey = "api-editing-filter";
     private const string ScheduleFilterStorageKey = "api-editing-schedule-filter";
@@ -139,6 +143,12 @@
         catch
         {
             // localStorage may be unavailable; use default
+        }
+        finally
+        {
+            // Render the table only after filters are restored so the initial
+            // ServerData load runs once with the correct filter values.
+            _filtersReady = true;
         }
     }
 
@@ -195,7 +205,7 @@
                 TotalItems = 0
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _errorMessage = ApiClient.GetErrorMessage(ex, "Unable to load API definitions.");
             return new TableData<ApiCallListItemDto>
