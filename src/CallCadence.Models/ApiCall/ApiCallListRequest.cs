@@ -10,4 +10,6 @@ public sealed class ApiCallListRequest
     public string SortBy { get; set; } = "title";
     public bool SortDescending { get; set; }
     public bool? Enabled { get; set; }
+    public bool? HasSchedule { get; set; }
+    public string? Title { get; set; }
 }

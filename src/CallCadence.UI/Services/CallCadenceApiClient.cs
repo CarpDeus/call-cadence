@@ -249,6 +249,16 @@ public sealed class CallCadenceApiClient
             queryParts.Add($"enabled={request.Enabled.Value.ToString().ToLowerInvariant()}");
         }
 
+        if (request.HasSchedule.HasValue)
+        {
+            queryParts.Add($"hasSchedule={request.HasSchedule.Value.ToString().ToLowerInvariant()}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Title))
+        {
+            queryParts.Add($"title={Uri.EscapeDataString(request.Title)}");
+        }
+
         var uri = $"api/ApiCallManagement/list?{string.Join("&", queryParts)}";
         return await _httpClient.GetFromJsonAsync<PagedResult<ApiCallListItemDto>>(uri, cancellationToken)
             ?? new PagedResult<ApiCallListItemDto>(new Paging(0, 0, request.PageNumber, request.PageSize), []);

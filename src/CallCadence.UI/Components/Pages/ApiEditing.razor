@@ -17,15 +17,36 @@
     }
 
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
-    <MudSelect T="EnabledFilterOption"
-               Label="Filter"
-               Value="_enabledFilter"
-               ValueChanged="OnEnabledFilterChanged"
-               Style="min-width: 220px;">
-        <MudSelectItem Value="EnabledFilterOption.Enabled">Enabled</MudSelectItem>
-        <MudSelectItem Value="EnabledFilterOption.Disabled">Disabled</MudSelectItem>
-        <MudSelectItem Value="EnabledFilterOption.All">All</MudSelectItem>
-    </MudSelect>
+    <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center">
+        <MudTextField T="string"
+                      Label="Title"
+                      Value="_titleFilter"
+                      ValueChanged="OnTitleFilterChanged"
+                      DebounceInterval="400"
+                      Clearable="true"
+                      Immediate="true"
+                      Style="min-width: 220px;" />
+
+        <MudSelect T="TriStateFilterOption"
+                   Label="Enabled"
+                   Value="_enabledFilter"
+                   ValueChanged="OnEnabledFilterChanged"
+                   Style="min-width: 140px;">
+            <MudSelectItem Value="TriStateFilterOption.All">All</MudSelectItem>
+            <MudSelectItem Value="TriStateFilterOption.Yes">Yes</MudSelectItem>
+            <MudSelectItem Value="TriStateFilterOption.No">No</MudSelectItem>
+        </MudSelect>
+
+        <MudSelect T="TriStateFilterOption"
+                   Label="Schedule Defined"
+                   Value="_scheduleFilter"
+                   ValueChanged="OnScheduleFilterChanged"
+                   Style="min-width: 160px;">
+            <MudSelectItem Value="TriStateFilterOption.All">All</MudSelectItem>
+            <MudSelectItem Value="TriStateFilterOption.Yes">Yes</MudSelectItem>
+            <MudSelectItem Value="TriStateFilterOption.No">No</MudSelectItem>
+        </MudSelect>
+    </MudStack>
 
     <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/api-editing/new">Add API</MudButton>
 </MudStack>
@@ -34,7 +55,7 @@
           @ref="_table"
           ServerData="LoadApiCallsAsync"
           Hover="true"
-          Height="600px"
+          Height="400px"
           FixedHeader="true"
           FixedFooter="true"
           Dense="true">
@@ -80,9 +101,13 @@
 @code {
     private MudTable<ApiCallListItemDto>? _table;
     private string? _errorMessage;
-    private EnabledFilterOption _enabledFilter = EnabledFilterOption.Enabled;
+    private TriStateFilterOption _enabledFilter = TriStateFilterOption.Yes;
+    private TriStateFilterOption _scheduleFilter = TriStateFilterOption.All;
+    private string _titleFilter = string.Empty;
 
-    private const string FilterStorageKey = "api-editing-filter";
+    private const string EnabledFilterStorageKey = "api-editing-filter";
+    private const string ScheduleFilterStorageKey = "api-editing-schedule-filter";
+    private const string TitleFilterStorageKey = "api-editing-title-filter";
 
     protected override async Task OnInitializedAsync()
     {
@@ -93,10 +118,22 @@
 
         try
         {
-            var saved = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", FilterStorageKey);
-            if (saved is not null && Enum.TryParse<EnabledFilterOption>(saved, out var parsed))
+            var savedEnabled = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", EnabledFilterStorageKey);
+            if (savedEnabled is not null && Enum.TryParse<TriStateFilterOption>(savedEnabled, out var parsedEnabled))
             {
-                _enabledFilter = parsed;
+                _enabledFilter = parsedEnabled;
+            }
+
+            var savedSchedule = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", ScheduleFilterStorageKey);
+            if (savedSchedule is not null && Enum.TryParse<TriStateFilterOption>(savedSchedule, out var parsedSchedule))
+            {
+                _scheduleFilter = parsedSchedule;
+            }
+
+            var savedTitle = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", TitleFilterStorageKey);
+            if (savedTitle is not null)
+            {
+                _titleFilter = savedTitle;
             }
         }
         catch
@@ -126,10 +163,17 @@
                 SortDescending = state.SortDirection == SortDirection.Descending,
                 Enabled = _enabledFilter switch
                 {
-                    EnabledFilterOption.Enabled => true,
-                    EnabledFilterOption.Disabled => false,
+                    TriStateFilterOption.Yes => true,
+                    TriStateFilterOption.No => false,
                     _ => null
-                }
+                },
+                HasSchedule = _scheduleFilter switch
+                {
+                    TriStateFilterOption.Yes => true,
+                    TriStateFilterOption.No => false,
+                    _ => null
+                },
+                Title = string.IsNullOrWhiteSpace(_titleFilter) ? null : _titleFilter.Trim()
             }, cancellationToken);
 
             _errorMessage = null;
@@ -162,19 +206,56 @@
         }
     }
 
-    private async Task OnEnabledFilterChanged(EnabledFilterOption value)
+    private async Task OnEnabledFilterChanged(TriStateFilterOption value)
     {
         _enabledFilter = value;
 
         try
         {
-            await JSRuntime.InvokeVoidAsync("localStorage.setItem", FilterStorageKey, value.ToString());
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", EnabledFilterStorageKey, value.ToString());
         }
         catch
         {
             // localStorage may be unavailable; filter change still applied
         }
 
+        await ReloadTableAsync();
+    }
+
+    private async Task OnScheduleFilterChanged(TriStateFilterOption value)
+    {
+        _scheduleFilter = value;
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", ScheduleFilterStorageKey, value.ToString());
+        }
+        catch
+        {
+            // localStorage may be unavailable; filter change still applied
+        }
+
+        await ReloadTableAsync();
+    }
+
+    private async Task OnTitleFilterChanged(string? value)
+    {
+        _titleFilter = value ?? string.Empty;
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", TitleFilterStorageKey, _titleFilter);
+        }
+        catch
+        {
+            // localStorage may be unavailable; filter change still applied
+        }
+
+        await ReloadTableAsync();
+    }
+
+    private async Task ReloadTableAsync()
+    {
         if (_table is not null)
         {
             _table.NavigateTo(0);
@@ -217,10 +298,10 @@
         return $"{(int)elapsed.TotalDays}d ago";
     }
 
-    private enum EnabledFilterOption
+    private enum TriStateFilterOption
     {
-        Enabled,
-        Disabled,
-        All
+        All,
+        Yes,
+        No
     }
 }
