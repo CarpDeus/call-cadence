@@ -177,6 +177,39 @@
             <MudText Typo="Typo.body2" Class="pt-2 mud-text-secondary">
                 Click a call log row to inspect the full request and response details.
             </MudText>
+            <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center" Class="pt-2" Wrap="Wrap.Wrap">
+                <MudSelect T="TriStateFilterOption"
+                           Label="Success"
+                           Value="_logSuccessFilter"
+                           ValueChanged="OnLogSuccessFilterChanged"
+                           Style="min-width: 140px;">
+                    <MudSelectItem Value="TriStateFilterOption.All">All</MudSelectItem>
+                    <MudSelectItem Value="TriStateFilterOption.Yes">Yes</MudSelectItem>
+                    <MudSelectItem Value="TriStateFilterOption.No">No</MudSelectItem>
+                </MudSelect>
+
+                <MudAutocomplete T="string"
+                                 Label="Method"
+                                 Value="_logMethodFilter"
+                                 ValueChanged="OnLogMethodFilterChanged"
+                                 SearchFunc="SearchLogMethods"
+                                 Clearable="true"
+                                 CoerceText="false"
+                                 ResetValueOnEmptyText="true"
+                                 Style="min-width: 180px;" />
+
+                <MudSelect T="int?"
+                           Label="Response Code"
+                           Value="_logResponseClassFilter"
+                           ValueChanged="OnLogResponseClassFilterChanged"
+                           Style="min-width: 160px;">
+                    <MudSelectItem T="int?" Value="@((int?)null)">All</MudSelectItem>
+                    <MudSelectItem T="int?" Value="@((int?)2)">2xx</MudSelectItem>
+                    <MudSelectItem T="int?" Value="@((int?)3)">3xx</MudSelectItem>
+                    <MudSelectItem T="int?" Value="@((int?)4)">4xx</MudSelectItem>
+                    <MudSelectItem T="int?" Value="@((int?)5)">5xx</MudSelectItem>
+                </MudSelect>
+            </MudStack>
             <MudTable T="ApiCallLogDto"
                       @ref="_logsTable"
                       ServerData="LoadLogsAsync"
@@ -555,6 +588,11 @@
     private bool _showSelectedLogJson;
     private string _selectedLogJson = string.Empty;
 
+    private TriStateFilterOption _logSuccessFilter = TriStateFilterOption.All;
+    private string? _logMethodFilter;
+    private int? _logResponseClassFilter;
+    private List<string> _logMethods = [];
+
     private async Task InitializeAsync()
     {
         _isEditMode = ApiCallId.HasValue;
@@ -587,6 +625,7 @@
                 };
 
                 await LoadExistingScheduleAsync(apiCall.Id);
+                await LoadLogMethodsAsync(apiCall.Id);
             }
             catch (HttpRequestException ex) when (ex.StatusCode is System.Net.HttpStatusCode.Unauthorized
                 or System.Net.HttpStatusCode.Forbidden)
@@ -752,7 +791,15 @@
                 PageNumber = state.Page + 1,
                 PageSize = state.PageSize,
                 SortBy = string.IsNullOrWhiteSpace(state.SortLabel) ? "executedAt" : state.SortLabel,
-                SortDescending = state.SortDirection != SortDirection.Ascending
+                SortDescending = state.SortDirection != SortDirection.Ascending,
+                Success = _logSuccessFilter switch
+                {
+                    TriStateFilterOption.Yes => true,
+                    TriStateFilterOption.No => false,
+                    _ => null
+                },
+                HttpMethod = string.IsNullOrWhiteSpace(_logMethodFilter) ? null : _logMethodFilter.Trim(),
+                ResponseCodeClass = _logResponseClassFilter
             }, cancellationToken);
 
             return new TableData<ApiCallLogDto>
@@ -771,6 +818,54 @@
         catch (Exception)
         {
             return new TableData<ApiCallLogDto> { Items = [], TotalItems = 0 };
+        }
+    }
+
+    private async Task LoadLogMethodsAsync(Guid apiCallId)
+    {
+        try
+        {
+            _logMethods = await ApiClient.GetApiCallLogMethodsAsync(apiCallId);
+        }
+        catch
+        {
+            _logMethods = [];
+        }
+    }
+
+    private Task<IEnumerable<string>> SearchLogMethods(string? value, CancellationToken cancellationToken)
+    {
+        IEnumerable<string> results = string.IsNullOrWhiteSpace(value)
+            ? _logMethods
+            : _logMethods.Where(method => method.Contains(value, StringComparison.OrdinalIgnoreCase));
+
+        return Task.FromResult(results);
+    }
+
+    private async Task OnLogSuccessFilterChanged(TriStateFilterOption value)
+    {
+        _logSuccessFilter = value;
+        await ReloadLogsTableAsync();
+    }
+
+    private async Task OnLogMethodFilterChanged(string? value)
+    {
+        _logMethodFilter = value;
+        await ReloadLogsTableAsync();
+    }
+
+    private async Task OnLogResponseClassFilterChanged(int? value)
+    {
+        _logResponseClassFilter = value;
+        await ReloadLogsTableAsync();
+    }
+
+    private async Task ReloadLogsTableAsync()
+    {
+        if (_logsTable is not null)
+        {
+            _logsTable.NavigateTo(0);
+            await _logsTable.ReloadServerData();
         }
     }
 
@@ -1079,5 +1174,12 @@
         public bool IsEnabled { get; set; } = true;
         public List<string> NextOccurrences { get; } = [];
         public string? PreviewError { get; set; }
+    }
+
+    private enum TriStateFilterOption
+    {
+        All,
+        Yes,
+        No
     }
 }

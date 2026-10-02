@@ -32,12 +32,12 @@ public sealed class ApiCallRepository : IApiCallRepository
         return await _context.ApiCalls.Where(x => x.IsActive).ToListAsync();
     }
 
-    public async Task<PagedResult<ApiCallListItemDto>> GetListPageAsync(ApiCallListRequest request)
+    public async Task<PagedResult<ApiCallListItemDto>> GetListPageAsync(ApiCallListRequest request, IReadOnlySet<Guid> scheduledApiCallIds)
     {
         var pageNumber = request.PageNumber < 1 ? 1 : request.PageNumber;
         var pageSize = request.PageSize <= 0 ? 10 : Math.Min(request.PageSize, 100);
 
-        var filteredQuery = BuildListQuery(request.Enabled);
+        var filteredQuery = BuildListQuery(request.Enabled, request.HasSchedule, request.Title, scheduledApiCallIds);
         var totalItems = await filteredQuery.CountAsync();
         var items = await ApplyDatabaseSorting(filteredQuery, request.SortBy, request.SortDescending)
             .Skip((pageNumber - 1) * pageSize)
@@ -50,9 +50,9 @@ public sealed class ApiCallRepository : IApiCallRepository
             items);
     }
 
-    public async Task<IReadOnlyList<ApiCallListItemDto>> GetListItemsAsync(bool? enabled)
+    public async Task<IReadOnlyList<ApiCallListItemDto>> GetListItemsAsync(bool? enabled, bool? hasSchedule, string? title, IReadOnlySet<Guid> scheduledApiCallIds)
     {
-        return await BuildListQuery(enabled).ToListAsync();
+        return await BuildListQuery(enabled, hasSchedule, title, scheduledApiCallIds).ToListAsync();
     }
 
     public async Task<Domain.ApiCall.ApiCall> CreateAsync(Domain.ApiCall.ApiCall apiCall)
@@ -81,7 +81,7 @@ public sealed class ApiCallRepository : IApiCallRepository
         await _context.SaveChangesAsync();
     }
 
-    private IQueryable<ApiCallListItemDto> BuildListQuery(bool? enabled)
+    private IQueryable<ApiCallListItemDto> BuildListQuery(bool? enabled, bool? hasSchedule, string? title, IReadOnlySet<Guid> scheduledApiCallIds)
     {
         var query = _context.ApiCalls
             .AsNoTracking();
@@ -89,6 +89,20 @@ public sealed class ApiCallRepository : IApiCallRepository
         if (enabled.HasValue)
         {
             query = query.Where(apiCall => apiCall.IsActive == enabled.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(title))
+        {
+var titleFilter = title.Trim();
+query = query.Where(apiCall => apiCall.Title.Contains(titleFilter));
+        }
+
+        if (hasSchedule.HasValue)
+        {
+            var scheduledIds = scheduledApiCallIds.ToList();
+            query = hasSchedule.Value
+                ? query.Where(apiCall => scheduledIds.Contains(apiCall.Id))
+                : query.Where(apiCall => !scheduledIds.Contains(apiCall.Id));
         }
 
         return query.Select(apiCall => new ApiCallListItemDto

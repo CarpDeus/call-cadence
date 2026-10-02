@@ -58,11 +58,12 @@ public sealed class ApiCallManagementController : ControllerBase
         var pageSize = request.PageSize <= 0 ? 10 : Math.Min(request.PageSize, 100);
         var sortBy = string.IsNullOrWhiteSpace(request.SortBy) ? "title" : request.SortBy.Trim();
         var scheduleLookup = await BuildScheduleLookupAsync();
+        var scheduledApiCallIds = scheduleLookup.Keys.ToHashSet();
 
         if (RequiresScheduleSorting(sortBy))
         {
             var items = ApplyScheduleMetadata(
-                    await _apiCallRepository.GetListItemsAsync(request.Enabled),
+                    await _apiCallRepository.GetListItemsAsync(request.Enabled, request.HasSchedule, request.Title, scheduledApiCallIds),
                     scheduleLookup)
                 .ToList();
             var orderedItems = ApplySorting(items, sortBy, request.SortDescending).ToList();
@@ -84,8 +85,10 @@ public sealed class ApiCallManagementController : ControllerBase
             PageSize = pageSize,
             SortBy = sortBy,
             SortDescending = request.SortDescending,
-            Enabled = request.Enabled
-        });
+            Enabled = request.Enabled,
+            HasSchedule = request.HasSchedule,
+            Title = request.Title
+        }, scheduledApiCallIds);
 
         return Ok(new PagedResult<ApiCallListItemDto>(
             pagedResult.Paging,
