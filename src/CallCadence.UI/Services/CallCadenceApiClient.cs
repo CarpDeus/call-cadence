@@ -284,9 +284,29 @@ public sealed class CallCadenceApiClient
             $"sortDescending={request.SortDescending.ToString().ToLowerInvariant()}"
         };
 
+        if (request.Success.HasValue)
+        {
+            queryParts.Add($"success={request.Success.Value.ToString().ToLowerInvariant()}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.HttpMethod))
+        {
+            queryParts.Add($"httpMethod={Uri.EscapeDataString(request.HttpMethod)}");
+        }
+
+        if (request.ResponseCodeClass.HasValue)
+        {
+            queryParts.Add($"responseCodeClass={request.ResponseCodeClass.Value}");
+        }
+
         var uri = $"api/ApiCallScheduling/logs/{apiCallId}/list?{string.Join("&", queryParts)}";
         return await _httpClient.GetFromJsonAsync<PagedResult<ApiCallLogDto>>(uri, cancellationToken)
             ?? new PagedResult<ApiCallLogDto>(new Paging(0, 0, request.PageNumber, request.PageSize), []);
+    }
+
+    public async Task<List<string>> GetApiCallLogMethodsAsync(Guid apiCallId, CancellationToken cancellationToken = default)
+    {
+        return await _httpClient.GetFromJsonAsync<List<string>>($"api/ApiCallScheduling/logs/{apiCallId}/methods", cancellationToken) ?? [];
     }
 
     public async Task<List<ScheduleInfoResponse>> GetSchedulesAsync()

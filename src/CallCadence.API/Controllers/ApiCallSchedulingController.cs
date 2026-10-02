@@ -179,6 +179,24 @@ public sealed class ApiCallSchedulingController : ControllerBase
             .AsNoTracking()
             .Where(log => log.ApiCallId == apiCallId);
 
+        if (request.Success.HasValue)
+        {
+            baseQuery = baseQuery.Where(log => log.Success == request.Success.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.HttpMethod))
+        {
+            var method = request.HttpMethod.Trim();
+            baseQuery = baseQuery.Where(log => log.HttpMethod.ToLower() == method.ToLower());
+        }
+
+        if (request.ResponseCodeClass is >= 1 and <= 9)
+        {
+            var lower = request.ResponseCodeClass.Value * 100;
+            var upper = lower + 100;
+            baseQuery = baseQuery.Where(log => log.ResponseCode >= lower && log.ResponseCode < upper);
+        }
+
         // sortBy is already lowercased above; sort labels from the client (e.g. "responseCode") match after lowercasing
         IQueryable<ApiCallLog> orderedQuery = (sortBy, request.SortDescending) switch
         {
@@ -202,6 +220,23 @@ public sealed class ApiCallSchedulingController : ControllerBase
         return Ok(new PagedResult<ApiCallLogDto>(
             new Paging(pageCount, totalItems, pageNumber, pageSize),
             items.Select(MapToDto)));
+    }
+
+    /// <summary>
+    /// Get the distinct HTTP methods present in the execution logs for a specific API call.
+    /// </summary>
+    [HttpGet("logs/{apiCallId}/methods")]
+    public async Task<ActionResult<IEnumerable<string>>> GetLogMethodsByApiCallId(Guid apiCallId)
+    {
+        var methods = await _dbContext.ApiCallLogs
+            .AsNoTracking()
+            .Where(log => log.ApiCallId == apiCallId && log.HttpMethod != null && log.HttpMethod != "")
+            .Select(log => log.HttpMethod)
+            .Distinct()
+            .OrderBy(method => method)
+            .ToListAsync();
+
+        return Ok(methods);
     }
 
     /// <summary>

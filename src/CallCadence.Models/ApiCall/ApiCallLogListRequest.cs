@@ -9,4 +9,7 @@ public sealed class ApiCallLogListRequest
     public int PageSize { get; set; } = 10;
     public string SortBy { get; set; } = "executedAt";
     public bool SortDescending { get; set; } = true;
+    public bool? Success { get; set; }
+    public string? HttpMethod { get; set; }
+    public int? ResponseCodeClass { get; set; }
 }
