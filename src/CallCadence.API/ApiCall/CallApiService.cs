@@ -110,6 +110,62 @@ public sealed class CallApiService
     }
 
     /// <summary>
+    /// Deletes expired API call logs in batches. The concurrency filter permits one instance while
+    /// overlapping invocations wait up to 600 seconds for its distributed lock, then fail on timeout.
+    /// </summary>
+    /// <param name="logRetentionDays">
+    /// Number of days of logs to retain. A value of -1 disables cleanup and the method exits immediately.
+    /// </param>
+    /// <param name="cancellationToken">Token used to cancel the batched cleanup loop.</param>
+    [DisableConcurrentExecution(600)]
+    public async Task CleanupApiCallLogsAsync(int logRetentionDays, CancellationToken cancellationToken = default)
+    {
+        if (logRetentionDays == -1)
+        {
+            return;
+        }
+
+        var cutoff = DateTime.UtcNow.AddDays(-logRetentionDays);
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            int rowsDeleted;
+
+            if (_dbContext.Database.IsRelational())
+            {
+                rowsDeleted = await _dbContext.Database.ExecuteSqlRawAsync(
+                    "DELETE FROM [ApiCallLogs] WHERE [PkId] IN (SELECT TOP (100) [PkId] FROM [ApiCallLogs] WHERE [ExecutedAt] < {0})",
+                    new object[] { cutoff },
+                    cancellationToken);
+            }
+            else
+            {
+                // Fallback for non-relational providers (e.g. in-memory database used in tests)
+                var expiredLogs = await _dbContext.ApiCallLogs
+                    .Where(log => log.ExecutedAt < cutoff)
+                    .OrderBy(log => log.PkId)
+                    .Take(100)
+                    .ToListAsync(cancellationToken);
+
+                if (expiredLogs.Count > 0)
+                {
+                    _dbContext.ApiCallLogs.RemoveRange(expiredLogs);
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+                }
+
+                rowsDeleted = expiredLogs.Count;
+            }
+
+            if (rowsDeleted == 0)
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
+        }
+    }
+
+    /// <summary>
     /// Executes a test API call from the provided definition without saving to the database.
     /// </summary>
     public async Task<TestApiCallResponse> TestApiCallAsync(TestApiCallRequest request)

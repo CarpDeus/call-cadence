@@ -358,6 +358,13 @@ if (!app.Environment.IsEnvironment("Testing"))
     using var scope = app.Services.CreateScope();
     var startupSynchronizer = scope.ServiceProvider.GetRequiredService<HangfireScheduleStartupSynchronizer>();
     await startupSynchronizer.SynchronizeAsync();
+
+    var logRetentionDays = app.Configuration.GetValue<int>("LogRetentionDays", 30);
+    var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+    recurringJobManager.AddOrUpdate<CallApiService>(
+        "apicall-log-cleanup",
+        svc => svc.CleanupApiCallLogsAsync(logRetentionDays, CancellationToken.None),
+        Cron.Hourly());
 }
 
 // Configure the HTTP request pipeline
