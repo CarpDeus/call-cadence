@@ -906,6 +906,77 @@ public sealed class CallApiServiceTests
             Times.Never);
     }
 
+    [Test]
+    public async Task CleanupApiCallLogsAsync_ShouldSkipConcurrentInvocation_WhileAnotherIsRunning()
+    {
+        // Arrange - seed more than one batch (100) of expired logs so the first run
+        // deletes a batch, then enters its inter-batch delay while holding the semaphore.
+        var dbContext = CreateDbContext();
+        var oldTimestamp = DateTime.UtcNow.AddDays(-10);
+        for (var i = 0; i < 150; i++)
+        {
+            dbContext.ApiCallLogs.Add(new ApiCallLog
+            {
+                Id = Guid.NewGuid(),
+                ApiCallId = Guid.NewGuid(),
+                ExecutedAt = oldTimestamp,
+                ResponseCode = 200,
+                Success = true,
+                DurationMs = 1
+            });
+        }
+
+        await dbContext.SaveChangesAsync();
+
+        var firstService = CreateCleanupService(dbContext);
+        var secondService = CreateCleanupService(dbContext);
+
+        using var firstRunCts = new CancellationTokenSource();
+
+        // Act - start the first cleanup. It deletes the first batch of 100 then awaits a
+        // 10 second delay while still holding the semaphore.
+        var firstRun = firstService.CleanupApiCallLogsAsync(1, firstRunCts.Token);
+
+        // Wait until the first batch has been deleted (first run is now inside its delay).
+        var timeout = DateTime.UtcNow.AddSeconds(5);
+        while (await dbContext.ApiCallLogs.CountAsync() > 50 && DateTime.UtcNow < timeout)
+        {
+            await Task.Delay(25);
+        }
+
+        (await dbContext.ApiCallLogs.CountAsync()).Should().Be(50, "the first run should have deleted exactly one batch");
+
+        // The second invocation should be skipped immediately because the semaphore is held.
+        await secondService.CleanupApiCallLogsAsync(1);
+
+        // Assert - the skipped run performed no deletions.
+        (await dbContext.ApiCallLogs.CountAsync()).Should().Be(50, "the concurrent invocation should be skipped and delete nothing");
+
+        // Cleanup - cancel the first run so the test does not wait for the full delay.
+        firstRunCts.Cancel();
+        try
+        {
+            await firstRun;
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when the inter-batch delay is cancelled.
+        }
+    }
+
+    private static CallApiService CreateCleanupService(CallCadenceDbContext dbContext)
+    {
+        return new CallApiService(
+            new Mock<IApiCallRepository>().Object,
+            new Mock<IApiCallLogRepository>().Object,
+            new Mock<IHttpClientFactory>().Object,
+            new Mock<ISentryService>().Object,
+            new ApiCallActivityTracker(),
+            CreateHubContextMock().Object,
+            dbContext,
+            new Mock<IRecurringJobManager>().Object);
+    }
+
     private static CallCadenceDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<CallCadenceDbContext>()
