@@ -110,8 +110,8 @@ public sealed class CallApiService
     }
 
     /// <summary>
-    /// Deletes expired API call logs in batches. Guarded against concurrent execution so only
-    /// one instance runs at a time; additional invocations exit immediately.
+    /// Deletes expired API call logs in batches. The concurrency filter permits one instance while
+    /// overlapping invocations wait up to 600 seconds for its distributed lock, then fail on timeout.
     /// </summary>
     /// <param name="logRetentionDays">
     /// Number of days of logs to retain. A value of -1 disables cleanup and the method exits immediately.
