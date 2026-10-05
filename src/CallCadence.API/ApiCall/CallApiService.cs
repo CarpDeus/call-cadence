@@ -27,6 +27,8 @@ public sealed class CallApiService
         "Api-Key"
     };
 
+    private static readonly SemaphoreSlim CleanupSemaphore = new(1, 1);
+
     private readonly IApiCallRepository _apiCallRepository;
     private readonly IApiCallLogRepository _logRepository;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -110,14 +112,15 @@ public sealed class CallApiService
     }
 
     /// <summary>
-    /// Deletes expired API call logs in batches. The concurrency filter permits one instance while
-    /// overlapping invocations wait up to 600 seconds for its distributed lock, then fail on timeout.
+    /// Deletes expired API call logs in batches. Concurrency is guarded by an in-process semaphore:
+    /// if a cleanup is already running, overlapping invocations are skipped immediately and return
+    /// without performing any work. Note this guard is per-process only and does not coordinate
+    /// across multiple application instances.
     /// </summary>
     /// <param name="logRetentionDays">
     /// Number of days of logs to retain. A value of -1 disables cleanup and the method exits immediately.
     /// </param>
     /// <param name="cancellationToken">Token used to cancel the batched cleanup loop.</param>
-    [DisableConcurrentExecution(600)]
     public async Task CleanupApiCallLogsAsync(int logRetentionDays, CancellationToken cancellationToken = default)
     {
         if (logRetentionDays == -1)
@@ -125,43 +128,56 @@ public sealed class CallApiService
             return;
         }
 
-        var cutoff = DateTime.UtcNow.AddDays(-logRetentionDays);
-
-        while (!cancellationToken.IsCancellationRequested)
+        if (!CleanupSemaphore.Wait(0))
         {
-            int rowsDeleted;
+            // Another cleanup is already running in this process; skip this invocation.
+            return;
+        }
 
-            if (_dbContext.Database.IsRelational())
-            {
-                rowsDeleted = await _dbContext.Database.ExecuteSqlRawAsync(
-                    "DELETE FROM [ApiCallLogs] WHERE [PkId] IN (SELECT TOP (100) [PkId] FROM [ApiCallLogs] WHERE [ExecutedAt] < {0})",
-                    new object[] { cutoff },
-                    cancellationToken);
-            }
-            else
-            {
-                // Fallback for non-relational providers (e.g. in-memory database used in tests)
-                var expiredLogs = await _dbContext.ApiCallLogs
-                    .Where(log => log.ExecutedAt < cutoff)
-                    .OrderBy(log => log.PkId)
-                    .Take(100)
-                    .ToListAsync(cancellationToken);
+        try
+        {
+            var cutoff = DateTime.UtcNow.AddDays(-logRetentionDays);
 
-                if (expiredLogs.Count > 0)
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                int rowsDeleted;
+
+                if (_dbContext.Database.IsRelational())
                 {
-                    _dbContext.ApiCallLogs.RemoveRange(expiredLogs);
-                    await _dbContext.SaveChangesAsync(cancellationToken);
+                    rowsDeleted = await _dbContext.Database.ExecuteSqlRawAsync(
+                        "DELETE FROM [ApiCallLogs] WHERE [PkId] IN (SELECT TOP (100) [PkId] FROM [ApiCallLogs] WHERE [ExecutedAt] < {0})",
+                        new object[] { cutoff },
+                        cancellationToken);
+                }
+                else
+                {
+                    // Fallback for non-relational providers (e.g. in-memory database used in tests)
+                    var expiredLogs = await _dbContext.ApiCallLogs
+                        .Where(log => log.ExecutedAt < cutoff)
+                        .OrderBy(log => log.PkId)
+                        .Take(100)
+                        .ToListAsync(cancellationToken);
+
+                    if (expiredLogs.Count > 0)
+                    {
+                        _dbContext.ApiCallLogs.RemoveRange(expiredLogs);
+                        await _dbContext.SaveChangesAsync(cancellationToken);
+                    }
+
+                    rowsDeleted = expiredLogs.Count;
                 }
 
-                rowsDeleted = expiredLogs.Count;
-            }
+                if (rowsDeleted == 0)
+                {
+                    return;
+                }
 
-            if (rowsDeleted == 0)
-            {
-                return;
+                await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
             }
-
-            await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
+        }
+        finally
+        {
+            CleanupSemaphore.Release();
         }
     }
 
