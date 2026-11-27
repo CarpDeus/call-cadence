@@ -26,7 +26,16 @@
     <PackageReference Include="Sentry.AspNetCore" Version="6.8.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
   </ItemGroup>
-
+	
+  <!-- Embed a UTC build timestamp as build metadata (after the '+') in the
+       AssemblyInformationalVersion so the /build endpoint can report it. -->
+  <Target Name="SetBuildTimestamp" BeforeTargets="GetAssemblyVersion;GenerateAssemblyInfo">
+    <PropertyGroup>
+      <BuildTimestamp>$([System.DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"))</BuildTimestamp>
+      <InformationalVersion>$(Version)+$(BuildTimestamp)</InformationalVersion>
+    </PropertyGroup>
+  </Target>
+		
   <ItemGroup>
     <ProjectReference Include="..\CallCadence.Models\CallCadence.Models.csproj" />
   </ItemGroup>

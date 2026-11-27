@@ -465,6 +465,38 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
 app.MapControllers();
 app.MapHub<GenericHub>("/hubs/generic");
 
+app.MapGet("/build", () =>
+{
+    var informationalVersion = Assembly
+        .GetExecutingAssembly()
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+        ?.InformationalVersion;
+
+    string buildDate = "unknown";
+
+    if (!string.IsNullOrWhiteSpace(informationalVersion))
+    {
+        // Build metadata follows the '+' in the informational version (e.g. "1.0.0+2024-06-01T12:34:56").
+        var plusIndex = informationalVersion.IndexOf('+');
+        if (plusIndex >= 0 && plusIndex < informationalVersion.Length - 1)
+        {
+            var metadata = informationalVersion[(plusIndex + 1)..];
+            if (DateTimeOffset.TryParse(
+                    metadata,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AssumeUniversal,
+                    out var parsedDate))
+            {
+                buildDate = parsedDate.ToString("yyyy-MM-dd HH:mm:ss");
+            }
+            else buildDate = $"Unparsed metadata: {metadata}";
+        }
+        else buildDate = $"No build metadata in version: {informationalVersion}";
+    }
+
+    return Results.Json(new { buildDate });
+});
+
 app.Run();
 
 // Make Program class accessible for testing
